@@ -41,3 +41,15 @@ if [ ! -f "$DATA/inventory.json" ]; then
 else
   echo "台帳はそのまま使います: $DATA/inventory.json"
 fi
+
+# 起動ボタン: ~/Applications に置く（sudo 不要）。Finder の「アプリケーション」や Spotlight から開ける。
+# 置きたくない場合は BB_PREFLIGHT_NO_SHORTCUT=1 で実行する。
+if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
+  APPS="${BB_PREFLIGHT_APPS_DIR:-$HOME/Applications}"
+  SHORTCUT="$APPS/Blackbox Blast Preflight.command"
+  mkdir -p "$APPS"
+  # 本体の場所を埋め込んだ小さな起動ファイル（シンボリックリンクだと本体の場所が分からなくなるため）
+  printf '#!/bin/bash\nexec %q\n' "$HERE/Preflight.command" > "$SHORTCUT"
+  chmod 755 "$SHORTCUT"
+  echo "起動ボタンを置きました: $SHORTCUT"
+fi
