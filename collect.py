@@ -13,6 +13,7 @@ import json
 import os
 import plistlib
 import re
+import socket
 import subprocess
 import sys
 
@@ -79,15 +80,38 @@ def listeners():
     return uniq
 
 
+def lan_ips():
+    """自分の LAN 側 IP。ifconfig（macOS）を優先し、無ければ既定経路の送信元 IP を使う（パケットは送らない）。"""
+    ips = [l.split()[1] for l in run(["ifconfig"]).splitlines()
+           if l.strip().startswith("inet ") and len(l.split()) > 1 and classify_addr(l.split()[1] + ":0") == "lan"]
+    if not ips:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("192.0.2.1", 9))  # UDP の connect は経路を決めるだけで送信しない
+            ip = s.getsockname()[0]
+            s.close()
+            if classify_addr(ip + ":0") == "lan":
+                ips = [ip]
+        except OSError:
+            pass
+    return ips
+
+
+def port_open(ip, port, timeout=2.0):
+    """TCP で接続できるかだけを確かめる（何も送らずに閉じる）。"""
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 def probe_lan(ports):
     """LAN 側の自分の IP に対して、遠隔管理系ポートが実際に開いているかを確かめる。"""
-    ips = [l.split()[1] for l in run(["ifconfig"]).splitlines()
-           if l.strip().startswith("inet ") and classify_addr(l.split()[1] + ":0") == "lan"]
     res = []
-    for ip in ips[:1]:
+    for ip in lan_ips()[:1]:
         for p in ports:
-            ok = subprocess.run(["nc", "-z", "-G", "2", ip, str(p)], capture_output=True).returncode == 0
-            res.append({"ip": ip, "port": p, "open": ok})
+            res.append({"ip": ip, "port": p, "open": port_open(ip, p)})
     return res
 
 

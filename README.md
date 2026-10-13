@@ -12,7 +12,7 @@
 
 ## 必要なもの
 
-- macOS（`lsof`・`netstat`・`socketfilterfw`・`nc` を使います）
+- macOS（`lsof`・`netstat`・`socketfilterfw`・`curl` を使います）
 - python3（macOS 標準の 3.9 で動きます。追加のライブラリは不要）
 - Node.js と npm、git（評価エンジンの取得とビルドに使います）
 

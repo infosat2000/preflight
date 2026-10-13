@@ -59,6 +59,24 @@ class ClassifyAddrTest(unittest.TestCase):
             self.assertEqual(collect.classify_addr(addr), want, addr)
 
 
+class PortProbeTest(unittest.TestCase):
+    def test_open_and_closed_port(self):
+        import socket
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        try:
+            self.assertTrue(collect.port_open("127.0.0.1", port))
+        finally:
+            srv.close()
+        self.assertFalse(collect.port_open("127.0.0.1", port, timeout=0.5))
+
+    def test_lan_ips_are_lan_scope(self):
+        for ip in collect.lan_ips():
+            self.assertEqual(collect.classify_addr(ip + ":0"), "lan")
+
+
 class SecretScanTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
