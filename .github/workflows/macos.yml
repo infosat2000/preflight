@@ -25,7 +25,7 @@ jobs:
           if command -v node; then echo 'node should not be on PATH'; exit 1; fi
           /usr/bin/python3 --version
       - name: setup.sh (no engine)
-        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor
+        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor && test ! -e "$HOME/Applications/Blackbox Blast Preflight Diagram.app"
       - name: Unit tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
       - name: Launcher, first and second run
@@ -78,6 +78,11 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$(tr -d '[:space:]' < VERSION)"
           test -s "$app/Contents/Resources/AppIcon.icns"
           test -x "$app/Contents/MacOS/launcher"
+          # 評価エンジンありの Mac には、構成図の起動ボタンも置かれる
+          dapp="$HOME/Applications/Blackbox Blast Preflight Diagram.app"
+          plutil -lint "$dapp/Contents/Info.plist"
+          test -s "$dapp/Contents/Resources/AppIcon.icns"
+          grep -q 'Diagram.command' "$dapp/Contents/MacOS/launcher"
           # .app はターミナルを開くだけなので、埋め込まれた本体の起動ファイルを直接（対話なしで）実行する
           eval "$(grep '^TARGET=' "$app/Contents/MacOS/launcher")"
           test -x "$TARGET"

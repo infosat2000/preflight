@@ -62,24 +62,25 @@ else
   echo "台帳はそのまま使います: $DATA/inventory.json"
 fi
 
-# 起動ボタン: アイコン付きの「Blackbox Blast Preflight.app」を ~/Applications に置く（sudo 不要）。
-# Finder の「アプリケーション」・Launchpad・Spotlight から開ける。中身は Preflight.command をターミナルで開くだけ。
+# 起動ボタン: アイコン付きの .app を ~/Applications に置く（sudo 不要）。
+# Finder の「アプリケーション」・Launchpad・Spotlight から開ける。中身は起動ファイル（.command）をターミナルで開くだけ。
 # 置きたくない場合は BB_PREFLIGHT_NO_SHORTCUT=1 で実行する。何度実行しても同じものを上書きする。
-if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
-  APPS="${BB_PREFLIGHT_APPS_DIR:-$HOME/Applications}"
-  APP="$APPS/Blackbox Blast Preflight.app"
-  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# 使い方: make_app "アプリ名" 起動ファイル バンドルID アイコンの1024pxPNG
+make_app() {
+  local name="$1" target="$2" bundle="$3" icon="$4"
+  local app="$APPS/$name.app"
+  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
   # 本体の場所を埋め込む（フォルダを移したら setup.sh をもう一度実行する）
-  printf '#!/bin/bash\nTARGET=%q\nexec open -a Terminal "$TARGET"\n' "$HERE/Preflight.command" > "$APP/Contents/MacOS/launcher"
-  chmod 755 "$APP/Contents/MacOS/launcher"
-  cat > "$APP/Contents/Info.plist" <<PLIST
+  printf '#!/bin/bash\nTARGET=%q\nexec open -a Terminal "$TARGET"\n' "$target" > "$app/Contents/MacOS/launcher"
+  chmod 755 "$app/Contents/MacOS/launcher"
+  cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Blackbox Blast Preflight</string>
-  <key>CFBundleDisplayName</key><string>Blackbox Blast Preflight</string>
-  <key>CFBundleIdentifier</key><string>com.blackboxblast.preflight</string>
+  <key>CFBundleName</key><string>$name</string>
+  <key>CFBundleDisplayName</key><string>$name</string>
+  <key>CFBundleIdentifier</key><string>$bundle</string>
   <key>CFBundleExecutable</key><string>launcher</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -90,14 +91,24 @@ if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
 </plist>
 PLIST
   # アイコン: リポジトリの 1024px PNG から、macOS 標準の sips と iconutil で .icns を作る
-  ICONSET="$(mktemp -d)/AppIcon.iconset"
-  mkdir -p "$ICONSET"
+  local iconset s d
+  iconset="$(mktemp -d)/AppIcon.iconset"
+  mkdir -p "$iconset"
   for s in 16 32 128 256 512; do
-    sips -z "$s" "$s" "$HERE/assets/icon-1024.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+    sips -z "$s" "$s" "$icon" --out "$iconset/icon_${s}x${s}.png" >/dev/null
     d=$((s * 2))
-    sips -z "$d" "$d" "$HERE/assets/icon-1024.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+    sips -z "$d" "$d" "$icon" --out "$iconset/icon_${s}x${s}@2x.png" >/dev/null
   done
-  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-  touch "$APP"  # Finder にアイコンの更新を知らせる
-  echo "起動ボタンを置きました: $APP"
+  iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
+  touch "$app"  # Finder にアイコンの更新を知らせる
+  echo "起動ボタンを置きました: $app"
+}
+
+if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
+  APPS="${BB_PREFLIGHT_APPS_DIR:-$HOME/Applications}"
+  make_app "Blackbox Blast Preflight" "$HERE/Preflight.command" com.blackboxblast.preflight "$HERE/assets/icon-1024.png"
+  # 専門家向け: 評価エンジンを入れた Mac にだけ、構成図を開く起動ボタンも置く
+  if [ -f "$DEST/dist/index.html" ]; then
+    make_app "Blackbox Blast Preflight Diagram" "$HERE/Diagram.command" com.blackboxblast.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
+  fi
 fi
