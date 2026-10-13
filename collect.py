@@ -187,7 +187,9 @@ SECRET_PATTERNS = [
     ("aws", r"AKIA[0-9A-Z]{16}"),
     ("groq", r"gsk_[A-Za-z0-9]{30,}"),
     ("npm", r"npm_[A-Za-z0-9]{36}"),
-    ("private_key", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    # 見出しの行だけでは数えない（プログラムや説明文に書かれた見出しを鍵と見間違えないように）。
+    # 見出しの後に、鍵の本文（base64 の長い行）が続くものだけを鍵とみなす。見出しは分けて書く（このファイル自身が引っかからないように）。
+    ("private_key", r"-----BEGIN [A-Z ]*" + "PRIVATE KEY-----" + r"\r?\n(?:[A-Za-z-]+: [^\n]*\r?\n)*\r?\n?[A-Za-z0-9+/=]{40,}"),
 ]
 
 
@@ -395,9 +397,9 @@ def ssh_key_encrypted(fp):
             text = f.read(65536)
     except OSError:
         return None
-    if "-----BEGIN" not in text or "PRIVATE KEY-----" not in text:
+    if "-----BEGIN" not in text or "PRIVATE " + "KEY-----" not in text:
         return None
-    if "-----BEGIN OPENSSH PRIVATE KEY-----" in text:
+    if "-----BEGIN OPENSSH " + "PRIVATE KEY-----" in text:
         body = "".join(l.strip() for l in text.splitlines() if l and not l.startswith("-----"))
         try:
             raw = base64.b64decode(body[:200] + "=" * (-len(body[:200]) % 4))
@@ -409,7 +411,7 @@ def ssh_key_encrypted(fp):
         n = int.from_bytes(raw[len(magic):len(magic) + 4], "big")
         cipher = raw[len(magic) + 4:len(magic) + 4 + n]
         return cipher != b"none"
-    return "ENCRYPTED" in text or "BEGIN ENCRYPTED PRIVATE KEY" in text
+    return "ENCRYPTED" in text or "BEGIN ENCRYPTED " + "PRIVATE KEY" in text
 
 
 def ssh_keys():
@@ -456,18 +458,27 @@ def time_machine():
     return {"configured": configured, "lastBackupAt": last}
 
 
+def own_dirs():
+    """鍵を探さない場所: このツールのフォルダと、点検結果を置くフォルダ。"""
+    data = os.environ.get("BB_PREFLIGHT_HOME") or os.path.join(HOME, ".bb-preflight")
+    return {TOOL_DIR, os.path.realpath(os.path.expanduser(data))}
+
+
 def secret_scan(roots):
     """平文の鍵らしき文字列を探す。値は出さず、ファイル名と種類だけ返す。"""
     hits = []
     rx = [(n, re.compile(p)) for n, p in SECRET_PATTERNS]
     exts = (".md", ".txt", ".json", ".yaml", ".yml", ".html", ".js", ".py", ".sh", ".toml")
+    skip = own_dirs()
     for root in roots:
         root = os.path.expanduser(root)
+        if os.path.realpath(root) in skip:
+            continue
         for dp, dns, fns in os.walk(root):
             if dp[len(root):].count(os.sep) >= SCAN_DEPTH:
                 dns[:] = []
-            # このツール自身のフォルダは見ない（テスト用の偽の鍵を、本物の鍵と見間違えないように）
-            dns[:] = [d for d in dns if d not in SKIP_DIRS and os.path.realpath(os.path.join(dp, d)) != TOOL_DIR]
+            # このツール自身のフォルダと点検結果の置き場所は見ない（テスト用の偽の鍵や、過去の結果を鍵と見間違えないように）
+            dns[:] = [d for d in dns if d not in SKIP_DIRS and os.path.realpath(os.path.join(dp, d)) not in skip]
             for fn in fns:
                 if not (fn.endswith(exts) or fn.startswith(".env") or fn in (".npmrc", ".netrc", ".pypirc")
                         or fn.endswith((".token", ".plist", ".env", ".cfg", ".ini", ".conf"))):

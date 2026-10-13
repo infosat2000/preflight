@@ -145,6 +145,30 @@ class SecretScanTest(unittest.TestCase):
             collect.TOOL_DIR = old
         self.assertEqual([os.path.basename(h["file"]) for h in hits], [".env"])
 
+    def test_scanning_this_tool_finds_nothing(self):
+        # ツールを ~/Claude の下などに置き、鍵の検索範囲に入っても、自分自身は見つからない
+        self.assertEqual(collect.secret_scan([collect.TOOL_DIR]), [])
+        old = collect.TOOL_DIR
+        collect.TOOL_DIR = "/nonexistent"
+        try:
+            # 除外を外しても、このツールのコードとテストには鍵と見えるものがない
+            self.assertEqual([h["file"] for h in collect.secret_scan([old])], [])
+        finally:
+            collect.TOOL_DIR = old
+
+    def test_results_folder_is_skipped(self):
+        key = "sk-" + "ant-" + "a1B2c3D4e5F6g7H8i9J0kLmNoPq"
+        self.write("bb/out/1/facts.txt", "K=%s\n" % key)
+        old = os.environ.get("BB_PREFLIGHT_HOME")
+        os.environ["BB_PREFLIGHT_HOME"] = os.path.join(self.root, "bb")
+        try:
+            self.assertEqual(collect.secret_scan([self.root]), [])
+        finally:
+            if old is None:
+                del os.environ["BB_PREFLIGHT_HOME"]
+            else:
+                os.environ["BB_PREFLIGHT_HOME"] = old
+
     def test_npm_token(self):
         tok = "npm" + "_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
         self.write(".npmrc", "//registry.npmjs.org/:_authToken=%s\n" % tok)
@@ -158,8 +182,12 @@ class SecretScanTest(unittest.TestCase):
         self.assertEqual(collect.secret_scan([self.root]), [])
 
     def test_private_key(self):
-        self.write("keys/id.txt", "-----BEGIN OPENSSH " + "PRIVATE KEY-----\n")
-        self.assertEqual(collect.secret_scan([self.root])[0]["kinds"], ["private_key"])
+        head = "-----BEGIN OPENSSH " + "PRIVATE KEY-----"
+        self.write("keys/id.txt", head + "\n" + "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAAB" + "\n")
+        self.write("docs/howto.md", "Look for a line like `" + head + "` in the file.\n")   # heading only: not a key
+        self.write("code/check.py", "if %r in text:\n    pass\n" % head)
+        hits = collect.secret_scan([self.root])
+        self.assertEqual([(os.path.basename(h["file"]), h["kinds"]) for h in hits], [("id.txt", ["private_key"])])
 
 
 class BuildTest(unittest.TestCase):
@@ -736,10 +764,10 @@ class MacChecksTest(unittest.TestCase):
             def key(cipher):
                 raw = b"openssh-key-v1\0" + len(cipher).to_bytes(4, "big") + cipher + b"\0" * 40
                 body = base64.b64encode(raw).decode()
-                return "-----BEGIN OPENSSH PRIVATE KEY-----\n%s\n-----END OPENSSH PRIVATE KEY-----\n" % body
+                return ("-----BEGIN OPENSSH " + "PRIVATE KEY-----\n%s\n-----END OPENSSH " + "PRIVATE KEY-----\n") % body
             cases = {"plain": (key(b"none"), False), "locked": (key(b"aes256-ctr"), True),
-                     "pem": ("-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nxx\n-----END RSA PRIVATE KEY-----\n", True),
-                     "pem_plain": ("-----BEGIN RSA PRIVATE KEY-----\nMIIxx\n-----END RSA PRIVATE KEY-----\n", False),
+                     "pem": ("-----BEGIN RSA " + "PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nxx\n-----END RSA " + "PRIVATE KEY-----\n", True),
+                     "pem_plain": ("-----BEGIN RSA " + "PRIVATE KEY-----\nMIIxx\n-----END RSA " + "PRIVATE KEY-----\n", False),
                      "notakey": ("hello\n", None)}
             for name, (text, want) in cases.items():
                 fp = os.path.join(tmp, name)
