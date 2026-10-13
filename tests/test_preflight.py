@@ -7,6 +7,7 @@ import copy
 import csv
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -283,7 +284,7 @@ class EasyReportTest(unittest.TestCase):
         f = facts()
         d = easy_report.build_data(f)
         self.assertEqual(d["verdict"], "red")
-        titles = " ".join(t["title"] for t in d["todo"])
+        titles = " ".join(t["title"]["ja"] for t in d["todo"])
         self.assertIn("リモートログイン", titles)          # lanProbe 22 open
         self.assertIn("管理画面が、ログインなしで開きます", titles)
         self.assertIn("やめたはずのサイト", titles)
@@ -292,10 +293,12 @@ class EasyReportTest(unittest.TestCase):
         # red comes before yellow, every task says how to fix it
         levels = [t["level"] for t in d["todo"]]
         self.assertEqual(levels, sorted(levels, key=lambda x: x != "red"))
-        self.assertTrue(all(t["how"] for t in d["todo"]))
+        self.assertTrue(all(t["how"]["ja"] and t["how"]["en"] for t in d["todo"]))
         self.assertEqual(len(d["checks"]), 6)
-        self.assertIn("ファイアウォール（外から勝手につながれるのを防ぐ壁）は有効です。", d["ok"])
-        self.assertIn("https://shop.example.com/ は誰でも見られます（公開用のサイトなら正常です）。", d["ok"])
+        ok_ja = [o["text"]["ja"] for o in d["ok"]]
+        self.assertIn("ファイアウォール（外から勝手につながれるのを防ぐ壁）は有効です。", ok_ja)
+        self.assertIn("https://shop.example.com/ は誰でも見られます（公開用のサイトなら正常です）。", ok_ja)
+        self.assertTrue(all(o["cat"] in {c["cat"] for c in d["checks"]} for o in d["ok"]))
 
     def test_apple_daemons_are_not_warnings(self):
         import easy_report
@@ -305,7 +308,7 @@ class EasyReportTest(unittest.TestCase):
         f["agents"]["claude_launchd_jobs"] = []
         d = easy_report.build_data(f)
         self.assertEqual(d["verdict"], "green")
-        self.assertTrue(any("rapportd" in x for x in d["ok"]))
+        self.assertTrue(any("rapportd" in x["text"]["ja"] for x in d["ok"]))
 
     def test_tidy_env_file_is_caution_not_nogo(self):
         import easy_report
@@ -343,9 +346,38 @@ class EasyReportTest(unittest.TestCase):
         cur["lanProbe"] = [dict(x, open=False) for x in cur["lanProbe"]]
         cur["secrets"] = []
         ch = easy_report.changes(prev, cur)
-        self.assertIn("リモートログイン（SSH）が閉じました", ch["better"])
-        self.assertTrue(any("片付きました" in x for x in ch["better"]))
+        self.assertIn("リモートログイン（SSH）が閉じました", [x["ja"] for x in ch["better"]])
+        self.assertTrue(any("片付きました" in x["ja"] for x in ch["better"]))
         self.assertEqual(ch["worse"], [])
+
+    def test_every_text_is_bilingual(self):
+        import easy_report
+        jp = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+        prev = facts()
+        cur = facts()
+        cur["firewall"] = {"enabled": False}
+        cur["lanProbe"] = [dict(x, open=not x["open"]) for x in cur["lanProbe"]]
+        cur["listeners"].append({"process": "rapportd", "pid": "9", "addr": "*:1", "port": 1, "scope": "all"})
+        cur["secrets"].append({"file": "/Users/someone/b.py", "kinds": ["github"], "private": False})
+        d = easy_report.build_data(cur, prev)
+        texts = [x["label"] for x in d["checks"]] + [o["text"] for o in d["ok"]]
+        for x in d["todo"]:
+            texts += [x["title"], x["what"], x["why"], x["how"]]
+        texts += d["diff"]["better"] + d["diff"]["worse"]
+        texts += [o["text"] for o in easy_report.build_data(facts())["ok"]]
+        self.assertTrue(d["diff"]["better"] and d["diff"]["worse"])
+        # file paths and app names come from the data and are not translated
+        data_bits = [h["file"] for h in cur["secrets"] + prev["secrets"]]
+        data_bits += [l["process"] for l in cur["listeners"]] + cur["agents"]["claude_launchd_jobs"]
+        for x in texts:
+            self.assertEqual(set(x), {"ja", "en"})
+            self.assertIsInstance(x["ja"], str)
+            self.assertIsInstance(x["en"], str)
+            self.assertTrue(x["ja"].strip() and x["en"].strip(), x)
+            en = x["en"]
+            for bit in data_bits:
+                en = en.replace(bit, "")
+            self.assertNotRegex(en, jp, x["en"])
 
     def test_html_is_self_contained_and_escaped(self):
         import easy_report
