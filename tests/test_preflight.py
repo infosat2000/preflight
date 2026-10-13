@@ -42,6 +42,20 @@ def nodes_by_id(m):
     return {n["id"]: n for n in m.nodes}
 
 
+def risky_mac(f):
+    """新しい点検項目を、すべて悪い側にした facts。"""
+    f["aiPermissions"] = {"files": 2, "bypass": ["~/.claude/settings.json"],
+                          "broad": [{"file": "~/.claude/settings.local.json", "rule": "Bash(*)", "kind": "any"},
+                                    {"file": "~/.claude/settings.local.json", "rule": "Bash(python3:*)", "kind": "code"}],
+                          "mcpWide": ["filesystem"]}
+    f["fileVault"] = {"on": False, "oclp": False, "laptop": True}
+    f["sshKeys"] = [{"file": "~/.ssh/id_ed25519", "encrypted": False}, {"file": "~/.ssh/work", "encrypted": True}]
+    f["remoteApps"] = ["AnyDesk"]
+    f["timeMachine"] = {"configured": True, "lastBackupAt": "2026-08-01T09:00"}
+    f["macGuard"] = {"sip": "off", "gatekeeper": False, "autoLogin": True, "oclp": False}
+    return f
+
+
 class ClassifyAddrTest(unittest.TestCase):
     def test_scopes(self):
         cases = {
@@ -374,6 +388,7 @@ class EasyReportTest(unittest.TestCase):
         cur["listeners"].append({"process": "rapportd", "pid": "9", "addr": "*:1", "port": 1, "scope": "all"})
         cur["secrets"].append({"file": "/Users/someone/b.py", "kinds": ["github"], "private": False})
         cur["npm"] = {"used": True, "ignoreScripts": False, "guard": None}
+        risky_mac(cur)
         d = easy_report.build_data(cur, prev)
         texts = [x["label"] for x in d["checks"]] + [o["text"] for o in d["ok"]]
         for x in d["todo"]:
@@ -386,6 +401,14 @@ class EasyReportTest(unittest.TestCase):
         # file paths and app names come from the data and are not translated
         data_bits = [h["file"] for h in cur["secrets"] + prev["secrets"]]
         data_bits += [l["process"] for l in cur["listeners"]] + cur["agents"]["claude_launchd_jobs"]
+        self.assertEqual({x["cat"] for x in d["todo"]} >= {"aiperm", "disk", "ssh", "remote", "backup", "guard"}, True)
+        good = copy.deepcopy(cur)
+        good.update(aiPermissions={"files": 1, "bypass": [], "broad": [], "mcpWide": []},
+                    fileVault={"on": True, "oclp": False, "laptop": True}, remoteApps=[],
+                    sshKeys=[{"file": "~/.ssh/id_ed25519", "encrypted": True}],
+                    timeMachine={"configured": True, "lastBackupAt": cur["measuredAt"][:16]},
+                    macGuard={"sip": "custom", "gatekeeper": True, "autoLogin": False, "oclp": True})
+        texts += [o["text"] for o in easy_report.build_data(good)["ok"]]
         for x in texts:
             self.assertEqual(set(x), {"ja", "en"})
             self.assertIsInstance(x["ja"], str)
@@ -534,6 +557,102 @@ class RepoHygieneTest(unittest.TestCase):
 def find_cli():
     p = os.environ.get("CRS_CLI") or os.path.join(ROOT, "vendor", "CyberRiskScape", "dist-cli", "main.js")
     return p if os.path.isfile(p) and shutil.which("node") else None
+
+
+class MacChecksTest(unittest.TestCase):
+    def levels(self, f, cat):
+        import easy_report
+        return [x["level"] for x in easy_report.build_data(f)["todo"] if x["cat"] == cat]
+
+    def test_levels(self):
+        import easy_report
+        f = risky_mac(facts())
+        d = easy_report.build_data(f)
+        self.assertEqual(sorted(self.levels(f, "aiperm")), ["red", "yellow"])
+        self.assertEqual(self.levels(f, "disk"), ["red"])
+        self.assertEqual(self.levels(f, "ssh"), ["yellow"])
+        self.assertIn("~/.ssh/id_ed25519", d["todo"][[x["cat"] for x in d["todo"]].index("ssh")]["how"]["en"])
+        self.assertEqual(self.levels(f, "remote"), ["yellow"])
+        self.assertEqual(self.levels(f, "backup"), ["red"])               # over 30 days
+        self.assertEqual(sorted(self.levels(f, "guard")), ["red", "red", "yellow"])
+        self.assertEqual(len(d["checks"]), 12)                            # every check except npm (not used here)
+        import datetime
+        at = datetime.datetime.fromisoformat(f["measuredAt"][:16])
+        f["timeMachine"]["lastBackupAt"] = (at - datetime.timedelta(days=10)).isoformat()[:16]
+        self.assertEqual(self.levels(f, "backup"), ["yellow"])
+        f["timeMachine"]["lastBackupAt"] = (at - datetime.timedelta(days=1)).isoformat()[:16]
+        self.assertEqual(self.levels(f, "backup"), [])
+        f["timeMachine"] = {"configured": False, "lastBackupAt": None}
+        self.assertEqual(self.levels(f, "backup"), ["yellow"])
+
+    def test_oclp_mac_is_judged_fairly(self):
+        f = risky_mac(facts())
+        f["fileVault"] = {"on": False, "oclp": True, "laptop": True}
+        f["macGuard"] = {"sip": "custom", "gatekeeper": True, "autoLogin": False, "oclp": True}
+        self.assertEqual(self.levels(f, "disk"), ["yellow"])              # check OCLP compatibility first
+        self.assertEqual(self.levels(f, "guard"), [])                     # SIP relaxed for OCLP is normal
+        import easy_report
+        d = easy_report.build_data(f)
+        disk = [x for x in d["todo"] if x["cat"] == "disk"][0]
+        self.assertNotIn("keep", disk)                                    # a laptop gets no "desk Mac" excuse
+        self.assertIn("Don't suggest a macOS update", disk["askAi"]["en"])
+        f["macGuard"]["sip"] = "off"
+        self.assertEqual(self.levels(f, "guard"), ["yellow"])
+
+    def test_unmeasured_checks_are_hidden(self):
+        import easy_report
+        f = facts()
+        f.update(aiPermissions={"files": 0, "bypass": [], "broad": [], "mcpWide": []},
+                 fileVault={"on": None, "oclp": False, "laptop": False}, sshKeys=[], timeMachine=None,
+                 macGuard={"sip": None, "gatekeeper": None, "autoLogin": False, "oclp": False})
+        cats = [c["cat"] for c in easy_report.build_data(f)["checks"]]
+        for c in ("aiperm", "disk", "ssh", "backup", "guard", "remote"):
+            self.assertNotIn(c, cats)
+
+    def test_ai_permissions_reads_rules_only(self):
+        tmp = tempfile.mkdtemp()
+        old = collect.HOME
+        try:
+            collect.HOME = tmp
+            os.makedirs(os.path.join(tmp, ".claude"))
+            proj = os.path.join(tmp, "work", "app", ".claude")
+            os.makedirs(proj)
+            with open(os.path.join(tmp, ".claude", "settings.json"), "w") as fp:
+                json.dump({"permissions": {"defaultMode": "bypassPermissions", "allow": ["Bash(git status)", "Bash(*)"]}}, fp)
+            with open(os.path.join(proj, "settings.local.json"), "w") as fp:
+                json.dump({"permissions": {"allow": ["Bash(python3:*)", "Bash(node -e *)", "Bash(npm test)", "Read(*)"]}}, fp)
+            with open(os.path.join(tmp, ".claude.json"), "w") as fp:
+                json.dump({"mcpServers": {"fs": {"args": ["-y", "server-filesystem", tmp + "/"]},
+                                          "ok": {"args": [os.path.join(tmp, "work")]}}}, fp)
+            ap = collect.ai_permissions([os.path.join(tmp, "work")])
+            self.assertEqual(ap["files"], 2)
+            self.assertEqual(ap["bypass"], ["~/.claude/settings.json"])
+            self.assertEqual({(b["rule"], b["kind"]) for b in ap["broad"]},
+                             {("Bash(*)", "any"), ("Bash(python3:*)", "code"), ("Bash(node -e *)", "code")})
+            self.assertEqual(ap["mcpWide"], ["fs"])
+        finally:
+            collect.HOME = old
+            shutil.rmtree(tmp)
+
+    def test_ssh_passphrase_from_header_only(self):
+        import base64
+        tmp = tempfile.mkdtemp()
+        try:
+            def key(cipher):
+                raw = b"openssh-key-v1\0" + len(cipher).to_bytes(4, "big") + cipher + b"\0" * 40
+                body = base64.b64encode(raw).decode()
+                return "-----BEGIN OPENSSH PRIVATE KEY-----\n%s\n-----END OPENSSH PRIVATE KEY-----\n" % body
+            cases = {"plain": (key(b"none"), False), "locked": (key(b"aes256-ctr"), True),
+                     "pem": ("-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nxx\n-----END RSA PRIVATE KEY-----\n", True),
+                     "pem_plain": ("-----BEGIN RSA PRIVATE KEY-----\nMIIxx\n-----END RSA PRIVATE KEY-----\n", False),
+                     "notakey": ("hello\n", None)}
+            for name, (text, want) in cases.items():
+                fp = os.path.join(tmp, name)
+                with open(fp, "w") as f:
+                    f.write(text)
+                self.assertEqual(collect.ssh_key_encrypted(fp), want, name)
+        finally:
+            shutil.rmtree(tmp)
 
 
 @unittest.skipUnless(find_cli(), "CyberRiskScape の CLI がないので結合テストは省略")

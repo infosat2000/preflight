@@ -6,6 +6,7 @@
 
 使い方: python3 collect.py <inventory.json> <out/facts.json>
 """
+import base64
 import datetime
 import glob
 import hashlib
@@ -274,6 +275,170 @@ def npm_protection():
     return {"used": used, "ignoreScripts": ignore, "guard": guard}
 
 
+SKIP_DIRS = ("node_modules", ".git", "dist", "dist-cli", "vendor", "vendor-CyberRiskScape", "__pycache__",
+             "venv", ".venv", "site-packages", "out")
+
+
+def short(p):
+    return "~" + p[len(HOME):] if p.startswith(HOME) else p
+
+
+# AI に「確認なしで何でも実行してよい」を与えてしまう許可（npm-supply-chain-guard の permission-audit と同じ考え方）
+ANY_COMMAND = re.compile(r"^Bash(\(\s*\*\s*(:\s*\*)?\s*\))?$")
+INTERPRETER = re.compile(r"^Bash\(\s*(python[0-9.]*|node|bash|sh|zsh|osascript|ruby|perl|deno|bun|npx)"
+                         r"(\s+-[A-Za-z]+)?\s*(:\s*\*|\s\*|\*)\s*\)$")
+GUARD_RULES = [re.compile(p) for p in (r"python[0-9.]*\s+-c\s*'?\s*\*", r"node\s+-e\s*'?\s*\*",
+                                       r"(bash|sh|zsh)\s+-l?c\s*'?\s*\*", r"\beval\b", r"curl[^)]*\|\s*(sh|bash)")]
+
+
+def claude_settings_files(roots):
+    """Claude Code の設定ファイル。自分全体の分と、走査範囲の中にあるプロジェクトの分。"""
+    files = [os.path.join(HOME, ".claude", n) for n in ("settings.json", "settings.local.json")]
+    for root in roots:
+        root = os.path.expanduser(root)
+        for dp, dns, fns in os.walk(root):
+            dns[:] = [d for d in dns if d not in SKIP_DIRS]
+            if os.path.basename(dp) == ".claude":
+                files += [os.path.join(dp, n) for n in ("settings.json", "settings.local.json") if n in fns]
+                dns[:] = []
+    return [f for f in dict.fromkeys(files) if os.path.isfile(f)]
+
+
+def ai_permissions(roots):
+    """Claude Code に与えている許可の広さ（読むだけ）。許可の文字列と設定ファイルの場所だけを記録する。"""
+    files = claude_settings_files(roots)
+    bypass, broad = [], []
+    for fp in files:
+        try:
+            with open(fp, encoding="utf-8") as f:
+                perm = (json.load(f) or {}).get("permissions") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        if perm.get("defaultMode") == "bypassPermissions":
+            bypass.append(short(fp))
+        for rule in perm.get("allow") or []:
+            if not isinstance(rule, str):
+                continue
+            r = rule.strip()
+            kind = "any" if ANY_COMMAND.match(r) else "code" if (INTERPRETER.match(r) or any(g.search(r) for g in GUARD_RULES)) else None
+            if kind:
+                broad.append({"file": short(fp), "rule": r, "kind": kind})
+    # MCP サーバーに、ホームフォルダ全体やディスク全体を渡していないか
+    wide = []
+    try:
+        with open(os.path.join(HOME, ".claude.json"), encoding="utf-8") as f:
+            cj = json.load(f)
+    except (OSError, ValueError):
+        cj = {}
+    servers = list(((cj.get("mcpServers") or {}).items()))
+    for v in (cj.get("projects") or {}).values():
+        servers += list(((v or {}).get("mcpServers") or {}).items())
+    for name, conf in servers:
+        args = [os.path.expanduser(str(a)).rstrip("/") or "/" for a in ((conf or {}).get("args") or [])]
+        if any(a in ("/", HOME, "/Users") for a in args) and name not in wide:
+            wide.append(name)
+    return {"files": len(files), "bypass": bypass, "broad": broad, "mcpWide": wide}
+
+
+def is_oclp():
+    """OpenCore Legacy Patcher で動いている Mac か（サポート外の古い Mac に新しい macOS を入れる仕組み）。"""
+    if any(os.path.exists(p) for p in ("/Library/Application Support/Dortania",
+                                       "/Applications/OpenCore-Patcher.app")):
+        return True
+    return "OCLP-Version" in run(["nvram", "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102:OCLP-Version"], timeout=5)
+
+
+def is_laptop():
+    return "Book" in run(["sysctl", "-n", "hw.model"], timeout=5)
+
+
+def filevault():
+    """FileVault（ディスクの暗号化）。sudo なしの fdesetup status で読む。"""
+    out = run(["fdesetup", "status"])
+    on = True if "FileVault is On" in out else False if "FileVault is Off" in out else None
+    return {"on": on, "oclp": is_oclp(), "laptop": is_laptop()}
+
+
+def mac_guard():
+    """Mac に最初から入っている守り: SIP・Gatekeeper・自動ログイン。どれも sudo なしで読む。"""
+    out = run(["csrutil", "status"], timeout=5)
+    sip = "custom" if "Custom Configuration" in out else "on" if "enabled" in out else "off" if "disabled" in out else None
+    gk = run(["spctl", "--status"], timeout=5)
+    gatekeeper = True if "assessments enabled" in gk else False if "assessments disabled" in gk else None
+    # ユーザー名は記録せず、設定されているかだけを見る
+    auto = run(["defaults", "read", "/Library/Preferences/com.apple.loginwindow", "autoLoginUser"], timeout=5)
+    auto_login = bool(auto.strip()) and not auto.startswith("ERROR") and "does not exist" not in auto
+    return {"sip": sip, "gatekeeper": gatekeeper, "autoLogin": auto_login, "oclp": is_oclp()}
+
+
+def ssh_key_encrypted(fp):
+    """秘密鍵にパスフレーズが付いているか。鍵の中身は使わず、暗号方式の名前だけを読む。"""
+    try:
+        with open(fp, errors="ignore") as f:
+            text = f.read(65536)
+    except OSError:
+        return None
+    if "-----BEGIN" not in text or "PRIVATE KEY-----" not in text:
+        return None
+    if "-----BEGIN OPENSSH PRIVATE KEY-----" in text:
+        body = "".join(l.strip() for l in text.splitlines() if l and not l.startswith("-----"))
+        try:
+            raw = base64.b64decode(body[:200] + "=" * (-len(body[:200]) % 4))
+        except (ValueError, TypeError):
+            return None
+        magic = b"openssh-key-v1\0"
+        if not raw.startswith(magic):
+            return None
+        n = int.from_bytes(raw[len(magic):len(magic) + 4], "big")
+        cipher = raw[len(magic) + 4:len(magic) + 4 + n]
+        return cipher != b"none"
+    return "ENCRYPTED" in text or "BEGIN ENCRYPTED PRIVATE KEY" in text
+
+
+def ssh_keys():
+    """~/.ssh の秘密鍵と、パスフレーズの有無。値は記録しない。"""
+    keys = []
+    d = os.path.join(HOME, ".ssh")
+    for fp in sorted(glob.glob(os.path.join(d, "*"))):
+        if fp.endswith((".pub", "known_hosts", "known_hosts.old", "config", "authorized_keys")) or not os.path.isfile(fp):
+            continue
+        enc = ssh_key_encrypted(fp)
+        if enc is not None:
+            keys.append({"file": short(fp), "encrypted": enc})
+    return keys
+
+
+# サポート詐欺などで入れさせられることが多い遠隔操作アプリ
+REMOTE_APPS = ("TeamViewer", "AnyDesk", "Splashtop", "LogMeIn", "RemotePC", "RustDesk", "ScreenConnect",
+               "ConnectWise", "Zoho Assist", "GoTo", "Supremo", "Chrome Remote Desktop", "Remote Utilities", "Ammyy")
+
+
+def remote_apps():
+    found = []
+    for d in ("/Applications", os.path.join(HOME, "Applications")):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            if n.endswith(".app") and any(n.lower().startswith(r.lower()) for r in REMOTE_APPS):
+                found.append(n[:-4])
+    return sorted(set(found))
+
+
+def time_machine():
+    """Time Machine の設定と、最後に成功したバックアップの日時。読めなければ None。"""
+    dest = run(["tmutil", "destinationinfo"])
+    if dest.startswith("ERROR") or not dest.strip():
+        return None
+    configured = "No destinations configured" not in dest
+    last = None
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})", run(["tmutil", "latestbackup"]))
+    if m:
+        last = "%s-%s-%sT%s:%s" % m.groups()[:5]
+    return {"configured": configured, "lastBackupAt": last}
+
+
 def secret_scan(roots):
     """平文の鍵らしき文字列を探す。値は出さず、ファイル名と種類だけ返す。"""
     hits = []
@@ -282,8 +447,7 @@ def secret_scan(roots):
     for root in roots:
         root = os.path.expanduser(root)
         for dp, dns, fns in os.walk(root):
-            dns[:] = [d for d in dns if d not in ("node_modules", ".git", "dist", "dist-cli", "vendor", "vendor-CyberRiskScape", "__pycache__",
-                                          "venv", ".venv", "site-packages", "out")]
+            dns[:] = [d for d in dns if d not in SKIP_DIRS]
             for fn in fns:
                 if not (fn.endswith(exts) or fn.startswith(".env") or fn in (".npmrc", ".netrc", ".pypirc")
                         or fn.endswith((".token", ".plist", ".env", ".cfg", ".ini", ".conf"))):
@@ -314,6 +478,12 @@ def main():
         "agents": agents(),
         "secrets": secret_scan(inv.get("secretScanRoots", [])),
         "npm": npm_protection(),
+        "aiPermissions": ai_permissions(inv.get("secretScanRoots", [])),
+        "fileVault": filevault(),
+        "sshKeys": ssh_keys(),
+        "remoteApps": remote_apps(),
+        "timeMachine": time_machine(),
+        "macGuard": mac_guard(),
     }
     os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
     with open(sys.argv[2], "w", encoding="utf-8") as f:

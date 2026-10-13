@@ -17,6 +17,7 @@
 - 専門家向けの詳しい情報（report.md / report.en.md）。
 - 入口の地図（レーダーと3つの場所の一覧）。
 - npm の感染対策の点検（ignore-scripts の設定と supply-chain-guard の結果を読む）。npm の公開用トークンも鍵として探す。
+- 点検項目の追加: AI に与えた権限、Mac の守り（SIP・Gatekeeper・自動ログイン）、ディスクの暗号化（FileVault）、SSH 鍵のパスフレーズ、遠隔操作アプリ、バックアップ（Time Machine）。OCLP の Mac は判断を合わせる。
 
 ### セキュリティ
 - setup.sh は評価エンジンの部品を `npm ci --ignore-scripts` で入れる（install スクリプトを動かさない）。

@@ -52,7 +52,15 @@ CHECKS = [
     ("keys", t("API キーなどの鍵", "API keys and other secrets")),
     ("ai", t("AI の自動実行", "AI running on its own")),
     ("npm", t("npm の感染対策", "npm infection protection")),
+    ("aiperm", t("AI に与えた権限", "Permissions given to AI")),
+    ("guard", t("Mac の守り", "Built-in protection")),
+    ("disk", t("ディスクの暗号化", "Disk encryption")),
+    ("ssh", t("SSH の鍵", "SSH keys")),
+    ("remote", t("遠隔操作アプリ", "Remote-control apps")),
+    ("backup", t("バックアップ", "Backup")),
 ]
+# 実測できなかった（その Mac で読めなかった・対象がない）ときは、チェックリストに出さない項目
+OPTIONAL = {"npm", "aiperm", "guard", "disk", "ssh", "backup"}
 
 _SHARING_JA = "システム設定 → 一般 → 共有 → "
 _SHARING_EN = "System Settings → General → Sharing → "
@@ -470,6 +478,8 @@ def analyze(facts):
                      "Nothing was found that starts AI on its own."))
 
     npm_findings(facts.get("npm"), todo, good)
+    more_findings(facts, todo, good)
+    guard_findings(facts, todo, good)
 
     order = {RED: 0, YELLOW: 1}
     todo.sort(key=lambda f: order[f["level"]])
@@ -495,8 +505,12 @@ def entry_map(facts, todo):
             len(secrets), "" if len(secrets) == 1 else "s")), lvl.get("keys", YELLOW)))
     elif "secrets" in facts:
         mac.append(item("keys", t("鍵の置き忘れなし", "No stray keys"), GREEN))
-    if (facts.get("npm") or {}).get("used"):
-        mac.append(item("npm", t("npm の感染対策", "npm infection protection"), lvl.get("npm", GREEN)))
+    skip = present(facts)
+    for cat, label in ((c, l) for c, l in CHECKS if c in ("npm", "aiperm", "guard", "disk", "ssh", "backup")):
+        if cat not in skip:
+            mac.append(item(cat, label, lvl.get(cat, GREEN)))
+    if facts.get("remoteApps"):
+        net.append(item("remote", cat_text(t("遠隔操作アプリ: ", "Remote control: "), join([same(a) for a in facts["remoteApps"]])), YELLOW))
 
     for p in open_admin_ports(facts):
         lan.append(item("ports", port_info(p)[0], RED))
@@ -617,6 +631,287 @@ def npm_findings(n, todo, good):
                  "current projects still build, and if a package needs its scripts, show me how to run them for that package only.")))
 
 
+def more_findings(facts, todo, good):
+    """AI の権限・ディスクの暗号化・SSH の鍵・遠隔操作アプリ・バックアップ。"""
+    ap = facts.get("aiPermissions")
+    if ap and ap.get("files"):
+        anyc = [b for b in ap.get("broad", []) if b["kind"] == "any"]
+        code = [b for b in ap.get("broad", []) if b["kind"] == "code"]
+        where = join([same(f) for f in dict.fromkeys(ap.get("bypass", []) + [b["file"] for b in anyc])])
+        if ap.get("bypass") or anyc:
+            todo.append(finding(
+                "aiperm", RED, t("AI が、確認なしで何でも実行できる設定です", "AI can run anything without asking you"),
+                cat_text(t("Claude Code の設定で、確認を飛ばすモード（bypassPermissions）か、すべてのコマンドを許す指定（Bash(*) など）が入っています: ",
+                           "Claude Code is set to skip confirmations (bypassPermissions), or allows every command (such as Bash(*)): "), where),
+                t("読み込んだ Web ページやファイルに悪い指示が仕込まれていると（プロンプトインジェクション）、AI がファイルを消したり鍵を外へ送ったりしても止められません。",
+                  "If a web page or file the AI reads contains hidden instructions (prompt injection), nothing stops the AI from deleting files "
+                  "or sending your keys out."),
+                t("Claude Code で /permissions を開いて、広すぎる許可を消します。設定ファイルの \"defaultMode\": \"bypassPermissions\" は消すか \"default\" にします。",
+                  "Open /permissions in Claude Code and remove the overly broad rules. In the settings file, remove "
+                  "\"defaultMode\": \"bypassPermissions\" or set it to \"default\"."),
+                time=t("約10分", "About 10 min"),
+                undo=t("消した許可は、/permissions からいつでも足し直せます", "You can add a rule back at any time from /permissions"),
+                ask_ai=t("Claude Code の設定（%s）に、確認なしで何でも実行できる許可が入っています。私がふだん使う作業に必要な許可だけを、"
+                         "具体的なコマンドに絞った形で提案してください。設定ファイルを書き換える前に、変更の案を見せて私に確かめてください。" % where["ja"],
+                         "My Claude Code settings (%s) allow running anything without asking. Suggest a narrower set of rules, limited to "
+                         "specific commands I actually use. Show me the proposed changes before editing any settings file." % where["en"])))
+        wide = ap.get("mcpWide", [])
+        if code or wide:
+            rules = [same(b["rule"]) for b in code[:5]]
+            parts = []
+            if rules:
+                parts.append(cat_text(t("プログラムを丸ごと実行できる許可: ", "rules that let it run any program: "), join(rules),
+                                      t("（ほか %d 件）" % (len(code) - 5), " (and %d more)" % (len(code) - 5)) if len(code) > 5 else ""))
+            if wide:
+                parts.append(cat_text(t("ホームフォルダ全体を読める MCP: ", "MCP servers that can read your whole home folder: "),
+                                      join([same(w) for w in wide])))
+            todo.append(finding(
+                "aiperm", YELLOW, t("AI に、広めの許可を与えています", "AI has fairly broad permissions"),
+                cat_text(t("Claude Code に、次の許可を与えています。", "Claude Code has been given: "),
+                         join(parts) if len(parts) > 1 else parts[0], t("", ".")),
+                t("python3 や node を何でも実行してよい許可は、実質「何でもできる」許可と同じです。悪い指示を読み込んだときに、確認なしで動いてしまいます。",
+                  "Permission to run any python3 or node command is, in practice, permission to do anything. If the AI reads hidden "
+                  "instructions, it acts on them without asking."),
+                t("許可を、決まったスクリプトだけに絞ります（例: Bash(python3:*) → Bash(python3 tests/run.py)）。MCP には作業用フォルダだけを渡します。",
+                  "Narrow the rules to specific scripts (for example Bash(python3:*) → Bash(python3 tests/run.py)). Give MCP servers only "
+                  "your work folder."),
+                time=t("約15分", "About 15 min"),
+                keep=t("自分しか触らないフォルダで、怪しいものを AI に読ませないなら、すぐ危ないわけではありません",
+                       "If the AI only works in your own folders and never reads untrusted content, it is not an urgent danger"),
+                ask_ai=t("Claude Code の許可リストに、python3 や node などを何でも実行できる広い許可があります。最近の作業で実際に使ったコマンドを調べ、"
+                         "必要なものだけに絞った許可の案を出してください。書き換える前に、案を見せて私に確かめてください。",
+                         "My Claude Code allow list has broad rules that let it run any python3 or node command. Look at the commands I "
+                         "actually used recently and propose narrower rules. Show me the proposal before changing anything.")))
+        if not (ap.get("bypass") or anyc or code or wide):
+            good("aiperm", t("Claude Code の許可に、確認なしで何でもできるような広すぎるものはありませんでした（設定ファイル %d 件）。" % ap["files"],
+                             "Claude Code's permissions include nothing broad enough to do anything without asking (%d settings file%s)."
+                             % (ap["files"], "" if ap["files"] == 1 else "s")))
+
+    fv = facts.get("fileVault")
+    if fv and fv.get("on") is True:
+        good("disk", t("ディスクは FileVault で暗号化されています。Mac をなくしても、中身は読まれません。",
+                       "The disk is encrypted with FileVault. If the Mac is lost, its contents can't be read."))
+    elif fv and fv.get("on") is False:
+        steps = [OPEN_SETTINGS,
+                 t("左の一覧で「プライバシーとセキュリティ」を選び、「FileVault」の「オンにする」を押します",
+                   "Choose Privacy & Security on the left, then click Turn On next to FileVault"),
+                 t("復旧キーは、紙に書くかパスワード管理アプリに保存し、Mac の外に置いておきます（なくすと中身を取り出せなくなります）",
+                   "Write the recovery key down or save it in a password manager, somewhere off this Mac (if you lose it, you can't get your data back)"),
+                 t("暗号化はそのまま使いながら裏で進みます。電源につないでおくと早く終わります",
+                   "Encryption runs in the background while you keep working. It finishes faster on power")]
+        if fv.get("oclp"):
+            todo.append(finding(
+                "disk", YELLOW, t("ディスクが暗号化されていません", "The disk is not encrypted"),
+                t("FileVault がオフです。この Mac は OpenCore Legacy Patcher（OCLP）で動いています。",
+                  "FileVault is off. This Mac runs with OpenCore Legacy Patcher (OCLP)."),
+                t("Mac をなくしたり盗まれたりすると、ディスクを抜かれて、中のファイルや鍵をそのまま読まれます。",
+                  "If the Mac is lost or stolen, someone can take the disk and read your files and keys as they are."),
+                t("OCLP の Mac は、オンにする前に OCLP の資料で FileVault との相性を確かめ、Time Machine でバックアップを取ってから進めます。",
+                  "On an OCLP Mac, first check OCLP's documentation for FileVault compatibility and make a Time Machine backup, then turn it on."),
+                time=t("確認に30分〜", "30 min or more to check first"),
+                keep=None if fv.get("laptop") else t("持ち歩かない机の Mac で、部屋の鍵がかかるなら、急ぎではありません",
+                                                     "If it's a desk Mac that never leaves a locked room, it's not urgent"),
+                ask_ai=t("この Mac は OpenCore Legacy Patcher（OCLP）で動いています。FileVault をオンにしても起動や OCLP のパッチに問題が出ないか、"
+                         "OCLP の公式資料で確かめてください。macOS のアップデートは勧めないでください。オンにする場合は、先にバックアップを取る手順から案内してください。",
+                         "This Mac runs with OpenCore Legacy Patcher (OCLP). Check OCLP's official documentation for whether turning on "
+                         "FileVault could break booting or OCLP's patches. Don't suggest a macOS update. If it's safe, walk me through "
+                         "making a backup first.")))
+        else:
+            todo.append(finding(
+                "disk", RED, t("ディスクが暗号化されていません", "The disk is not encrypted"),
+                t("FileVault（Mac に最初から入っているディスクの暗号化）がオフです。", "FileVault, the disk encryption built into your Mac, is off."),
+                t("Mac をなくしたり盗まれたりすると、ディスクを抜かれて、中のファイルや鍵をそのまま読まれます。",
+                  "If the Mac is lost or stolen, someone can take the disk and read your files and keys as they are."),
+                t("システム設定 → プライバシーとセキュリティ → FileVault → オンにする",
+                  "System Settings → Privacy & Security → FileVault → Turn On"),
+                SELF, steps + [RECHECK], time=t("設定は約5分（暗号化は裏で数時間）", "About 5 min to set up (encryption runs for hours in the background)"),
+                undo=t("同じ画面でオフにできます", "You can turn it off on the same screen")))
+
+    keys = facts.get("sshKeys")
+    if keys:
+        plain = [k for k in keys if not k.get("encrypted")]
+        if plain:
+            names = join([same(k["file"]) for k in plain])
+            first = plain[0]["file"]
+            todo.append(finding(
+                "ssh", YELLOW, t("パスフレーズのない SSH の鍵が %d 個あります" % len(plain),
+                                 "%d SSH key%s ha%s no passphrase" % (len(plain), "" if len(plain) == 1 else "s", "s" if len(plain) == 1 else "ve")),
+                cat_text(t("次の鍵は、ファイルを持っているだけで誰でも使えます: ", "Anyone who has these files can use them: "), names),
+                t("鍵のファイルを1つ盗まれるだけで、サーバーや GitHub にあなたとして入られます。npm のワームなどが真っ先に狙うのが、こうした鍵です。",
+                  "If one key file is stolen, someone can log in to your servers or GitHub as you. Worms in npm packages go after exactly these keys."),
+                t("ターミナルで ssh-keygen -p -f %s を実行して、パスフレーズを付けます。" % first,
+                  "Run ssh-keygen -p -f %s in Terminal to add a passphrase." % first),
+                SELF, [t("「アプリケーション」→「ユーティリティ」から「ターミナル」を開きます", "Open Terminal from Applications → Utilities"),
+                       t("ssh-keygen -p -f %s と入力して return を押し、新しいパスフレーズを2回入れます" % first,
+                         "Type ssh-keygen -p -f %s, press return, and enter a new passphrase twice" % first),
+                       t("毎回入れるのが面倒なら ssh-add --apple-use-keychain %s で、キーチェーンに覚えさせます" % first,
+                         "To avoid typing it every time, run ssh-add --apple-use-keychain %s to save it in Keychain" % first),
+                       t("鍵がほかにもあれば、同じ手順をくり返します", "Repeat for any other keys"),
+                       RECHECK],
+                time=t("約5分", "About 5 min"),
+                undo=t("同じコマンドで、パスフレーズを空にすれば元に戻ります", "Run the same command and leave the passphrase empty to undo it"),
+                keep=t("自動で動く処理（定期的な git push など）がこの鍵を使っているなら、パスフレーズを付けると止まることがあります。その鍵は、その処理専用にして、ほかでは使わないようにします",
+                       "If an automatic job (like a scheduled git push) uses this key, adding a passphrase may stop it. Keep such a key only for that job")))
+        else:
+            good("ssh", t("SSH の鍵（%d 個）は、すべてパスフレーズで守られています。" % len(keys),
+                          "All %d SSH key%s %s protected by a passphrase." % (len(keys), "" if len(keys) == 1 else "s",
+                                                                             "is" if len(keys) == 1 else "are")))
+
+    apps = facts.get("remoteApps")
+    if apps:
+        todo.append(finding(
+            "remote", YELLOW, t("遠隔操作アプリが入っています", "Remote-control apps are installed"),
+            cat_text(t("ほかの人がこのMacの画面を見たり操作したりできるアプリがあります: ",
+                       "These apps let someone else see and control this Mac's screen: "), join([same(a) for a in apps])),
+            t("「ウイルスに感染しました」などの偽の警告で電話をかけさせ、こうしたアプリを入れさせる「サポート詐欺」がよくあります。入ったままだと、知らない人に操作され続けるおそれがあります。",
+              "In tech-support scams, a fake warning (\"your Mac is infected\") makes you call a number and install apps like these. "
+              "Left installed, a stranger may keep controlling your Mac."),
+            t("自分で入れて使っているもの以外は、アプリを終了して「アプリケーション」フォルダからゴミ箱に入れます。"
+              "電話で言われて入れたなら、すぐネットを切って削除し、パスワードを変え、IPA の「情報セキュリティ安心相談窓口」に相談します。",
+              "Unless you installed it yourself and use it, quit the app and move it from Applications to the Trash. "
+              "If someone on the phone told you to install it, disconnect from the internet, delete it, change your passwords, "
+              "and get help (in Japan, IPA's security consultation desk)."),
+            SELF, time=t("約5分", "About 5 min"),
+            keep=t("自分で入れて、家族のパソコンの手伝いなどに使っているなら、問題ありません",
+                   "If you installed it yourself, for example to help family with their computers, that's fine")))
+    elif apps is not None:
+        good("remote", t("サポート詐欺で入れさせられることの多い遠隔操作アプリは、見つかりませんでした。",
+                         "No remote-control apps of the kind used in tech-support scams were found."))
+
+    tm = facts.get("timeMachine")
+    if tm:
+        last = tm.get("lastBackupAt")
+        days = None
+        if last and facts.get("measuredAt"):
+            try:
+                import datetime
+                days = (datetime.datetime.fromisoformat(facts["measuredAt"][:16]) -
+                        datetime.datetime.fromisoformat(last)).days
+            except ValueError:
+                days = None
+        setup_steps = [t("外付けのディスクを Mac につなぎます", "Connect an external disk to the Mac"),
+                       OPEN_SETTINGS,
+                       t("左の一覧で「一般」を選び、「Time Machine」→「バックアップディスクを追加」でそのディスクを選びます",
+                         "Choose General on the left, then Time Machine → Add Backup Disk, and pick that disk"),
+                       t("最初のバックアップは数時間かかります。終わったら外付けディスクはつないだままにするか、こまめにつなぎます",
+                         "The first backup takes a few hours. Keep the disk connected, or connect it often"),
+                       RECHECK]
+        if not tm.get("configured"):
+            todo.append(finding(
+                "backup", YELLOW, t("バックアップが設定されていません", "No backup is set up"),
+                t("Time Machine（Mac に最初から入っているバックアップ）に、バックアップ先がありません。",
+                  "Time Machine, the backup built into your Mac, has no backup disk."),
+                t("故障やランサムウェア（ファイルを人質にする攻撃）にあうと、仕事のファイルを取り戻せません。",
+                  "If the Mac breaks or ransomware locks your files, you can't get your work back."),
+                t("外付けディスクをつなぎ、システム設定 → 一般 → Time Machine で設定します。",
+                  "Connect an external disk and set it up in System Settings → General → Time Machine."),
+                SELF, setup_steps, time=t("約10分（初回のバックアップは数時間）", "About 10 min (the first backup takes hours)"),
+                keep=t("ほかの方法（クラウドなど）で、仕事のファイルを毎日バックアップしているなら、急ぎではありません",
+                       "If you back up your work files every day another way (for example to the cloud), it's not urgent")))
+        elif days is not None and days > 7:
+            todo.append(finding(
+                "backup", RED if days > 30 else YELLOW, t("最後のバックアップが %d 日前です" % days, "The last backup was %d days ago" % days),
+                t("Time Machine の最後のバックアップは %s です。" % last.replace("T", " "),
+                  "Time Machine's last backup was on %s." % last.replace("T", " ")),
+                t("いま故障やランサムウェアにあうと、この %d 日分の作業は戻りません。" % days,
+                  "If the Mac breaks or ransomware strikes now, the last %d days of work can't be recovered." % days),
+                t("バックアップ先のディスクをつないで、メニューバーの Time Machine から「今すぐバックアップを作成」を選びます。",
+                  "Connect the backup disk and choose Back Up Now from the Time Machine menu in the menu bar."),
+                SELF, time=t("約5分（バックアップは裏で進みます）", "About 5 min (the backup runs in the background)")))
+        elif days is not None:
+            good("backup", t("Time Machine の最後のバックアップは %s です。" % last.replace("T", " "),
+                             "Time Machine's last backup was on %s." % last.replace("T", " ")))
+        else:
+            good("backup", t("Time Machine は設定されています（最後のバックアップの日時は、この権限では読めませんでした）。",
+                             "Time Machine is set up (the time of the last backup couldn't be read with these permissions)."))
+
+
+def guard_findings(facts, todo, good):
+    """SIP・Gatekeeper・自動ログイン。OCLP の Mac は SIP を一部ゆるめるのが前提なので、そのぶんを差し引いて判断する。"""
+    g = facts.get("macGuard")
+    if not g:
+        return
+    oclp = g.get("oclp")
+    ok = []
+    if g.get("gatekeeper") is False:
+        todo.append(finding(
+            "guard", RED, t("Gatekeeper がオフです", "Gatekeeper is off"),
+            t("ダウンロードしたアプリを開く前の確認（Gatekeeper）が止まっています。",
+              "The check macOS runs before opening downloaded apps (Gatekeeper) is turned off."),
+            t("開発元が確かめられないアプリや、改ざんされたアプリも、警告なしで開いてしまいます。",
+              "Apps from unknown developers, or apps that were tampered with, open without any warning."),
+            t("ターミナルで sudo spctl --master-enable を実行して、元に戻します。",
+              "Run sudo spctl --master-enable in Terminal to turn it back on."),
+            SELF, [t("「アプリケーション」→「ユーティリティ」から「ターミナル」を開きます", "Open Terminal from Applications → Utilities"),
+                   t("sudo spctl --master-enable と入力して return を押し、Mac のパスワードを入れます",
+                     "Type sudo spctl --master-enable, press return, and enter your Mac password"),
+                   RECHECK],
+            time=t("約1分", "About 1 min"),
+            undo=t("必要なアプリだけ、Finder で右クリック →「開く」で個別に許可できます",
+                   "You can still allow a single app by right-clicking it in Finder and choosing Open")))
+    elif g.get("gatekeeper"):
+        ok.append(t("Gatekeeper はオン", "Gatekeeper is on"))
+    sip = g.get("sip")
+    if sip == "on":
+        ok.append(t("SIP（システムを書き換えから守る仕組み）はオン", "SIP (which protects system files) is on"))
+    elif sip == "custom" and oclp:
+        ok.append(t("SIP は OCLP に必要なぶんだけゆるめてあります（OCLP では普通の状態です）",
+                    "SIP is relaxed only as far as OCLP needs (normal for OCLP)"))
+    elif sip in ("custom", "off"):
+        todo.append(finding(
+            "guard", YELLOW if oclp else RED,
+            t("SIP がオフになっています", "SIP is turned off") if sip == "off" else t("SIP が一部オフです", "SIP is partly off"),
+            t("システムのファイルを書き換えから守る仕組み（SIP）が%s。" % ("止まっています" if sip == "off" else "一部ゆるめてあります"),
+              "System Integrity Protection, which keeps system files from being changed, is %s." % ("off" if sip == "off" else "partly relaxed")),
+            t("悪いプログラムが入り込んだとき、macOS の中まで書き換えて居座れるようになります。",
+              "If malware gets in, it can rewrite parts of macOS itself and stay hidden."),
+            t("OCLP が必要とする設定より広くゆるめていないか、OCLP の設定画面で確かめます。" if oclp else
+              "復旧モード（リカバリー）で起動し、ターミナルで csrutil enable を実行してオンに戻します。",
+              "Check in OCLP's settings that SIP isn't relaxed further than OCLP needs." if oclp else
+              "Start up in Recovery mode, open Terminal there, and run csrutil enable to turn it back on."),
+            time=t("約15分", "About 15 min"),
+            keep=t("OCLP で動かしている Mac は、SIP を一部ゆるめないと起動やパッチが動きません。OCLP の推奨どおりなら、そのままにします",
+                   "On an OCLP Mac, SIP has to be partly relaxed for booting and patches to work. If it matches OCLP's recommendation, leave it")
+            if oclp else None))
+    if g.get("autoLogin"):
+        todo.append(finding(
+            "guard", YELLOW, t("自動ログインがオンです", "Automatic login is on"),
+            t("Mac を起動すると、パスワードを入れなくてもデスクトップまで進みます。",
+              "When the Mac starts, it goes straight to the desktop without a password."),
+            t("Mac を持ち去られると、電源を入れるだけで、メールやブラウザに保存したログインまで使われます。",
+              "If someone takes the Mac, they only need to switch it on to use your mail and the logins saved in your browser."),
+            t("システム設定 →「ユーザとグループ」→「自動ログイン」を「オフ」にします。",
+              "System Settings → Users & Groups → set Automatically log in as to Off."),
+            SELF, [OPEN_SETTINGS,
+                   t("左の一覧で「ユーザとグループ」を選びます", "Choose Users & Groups on the left"),
+                   t("「自動ログイン」を「オフ」にして、Mac のパスワードを入れます", "Set Automatically log in as to Off and enter your Mac password"),
+                   RECHECK],
+            time=t("約1分", "About 1 min"),
+            undo=t("同じ画面で、いつでもオンに戻せます", "You can turn it back on from the same screen"),
+            keep=t("持ち歩かない机の Mac で、部屋の鍵がかかるなら、急ぎではありません",
+                   "If it's a desk Mac that never leaves a locked room, it's not urgent")))
+    elif g.get("autoLogin") is False:
+        ok.append(t("自動ログインはオフ", "automatic login is off"))
+    if ok and not any(f["cat"] == "guard" for f in todo):
+        good("guard", cat_text(join(ok), t("でした。", ".")))
+
+
+def present(facts):
+    """チェックリストに出す項目。実測できなかったものは出さない。"""
+    has = {
+        "npm": (facts.get("npm") or {}).get("used"),
+        "aiperm": (facts.get("aiPermissions") or {}).get("files"),
+        "guard": any(v is not None for k, v in (facts.get("macGuard") or {}).items() if k in ("sip", "gatekeeper")),
+        "disk": (facts.get("fileVault") or {}).get("on") is not None,
+        "ssh": bool(facts.get("sshKeys")),
+        "backup": bool(facts.get("timeMachine")),
+    }
+    skip = [c for c in OPTIONAL if not has.get(c)]
+    if "remoteApps" not in facts:
+        skip.append("remote")
+    return skip
+
+
 def checks(todo, skip=()):
     """6つの項目それぞれの信号（いちばん悪いもの）。"""
     res = []
@@ -686,7 +981,7 @@ def build_data(facts, prev=None, detail=""):
         "measuredAt": facts.get("measuredAt", "").replace("T", " "),
         "verdict": RED if reds else YELLOW if todo else GREEN,
         "counts": {"red": reds, "yellow": len(todo) - reds, "ok": len(ok)},
-        "checks": checks(todo, () if (facts.get("npm") or {}).get("used") else ("npm",)),
+        "checks": checks(todo, present(facts)),
         "map": entry_map(facts, todo),
         "todo": todo,
         "ok": ok,
