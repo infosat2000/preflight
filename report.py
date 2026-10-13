@@ -60,7 +60,25 @@ def main():
         ", ".join(ag["local_mcp_servers"]) or "なし", len(ag["claude_launchd_jobs"]), ", ".join(ag["claude_launchd_jobs"])))
     L.append("")
 
-    L.append("## 2. IPA 注意喚起 17 項目（CyberRiskScape の判定）")
+    L.append("## 2. 前回との差分")
+    L.append("")
+    d = os.path.join(out, "diff.md")
+    if os.path.exists(d):
+        with open(d, encoding="utf-8") as f:
+            body = f.read().strip()
+        # 見出しを 2 段下げて、このレポートの節の中に収める
+        for line in body.splitlines():
+            L.append("##" + line if line.startswith("#") else line)
+    else:
+        L.append("初回のため差分はありません。次回の実行から、増えた入口・消えた入口がここに出ます。")
+    L.append("")
+
+    L.append("---")
+    L.append("")
+    L.append("以下は補助の情報です。CyberRiskScape の脅威ルールは、構成要素の**種類**から一般的に想定される脅威を並べます。"
+             "このMacで確かめた問題ではないため、件数の多さは危険度を表しません。上の 1・2 節を優先してください。")
+    L.append("")
+    L.append("## 3. 参考: IPA 注意喚起 17 項目（CyberRiskScape の判定）")
     L.append("")
     L.append("集計: %s" % summary)
     L.append("")
@@ -74,7 +92,7 @@ def main():
     L.append("「問題なし」「対象なし」は、該当する要素を図に描いていないだけの場合があります（例: ipa-09 は委託先、ipa-13 はシャドー IT を台帳に載せていない）。実測で確かめた結果ではありません。")
     L.append("")
 
-    L.append("## 3. 重大度 High 以上で、まだ対応方針が決まっていない脅威（対象ごと）")
+    L.append("## 4. 参考: 重大度 High 以上で、まだ対応方針が決まっていない脅威（対象ごと・一般論）")
     L.append("")
     by = collections.OrderedDict()
     for t in threats:
@@ -91,11 +109,6 @@ def main():
             L.append("  - 対象: %s" % "、".join(a.split(" ", 1)[-1] if a.startswith("C") else a for a in assets))
     L.append("")
 
-    d = os.path.join(out, "diff.md")
-    if os.path.exists(d):
-        L.append("## 4. 前回との差分")
-        L.append("")
-        L.append("詳細は [diff.md](%s) を参照。" % d)
     with open(os.path.join(out, "report.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(L) + "\n")
 

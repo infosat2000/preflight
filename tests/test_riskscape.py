@@ -222,6 +222,38 @@ class ReportTest(unittest.TestCase):
             self.assertIn("| ipa-01 外部公開範囲の見直し | 要対応 | 1 | 0 |", text)
             self.assertIn("C1 認証なしサーバー", text)
             self.assertNotIn("受容済み", text)
+            self.assertIn("初回のため差分はありません", text)
+            # 実測と差分が、一般論の脅威一覧より前に来る
+            self.assertLess(text.index("## 1. 実測"), text.index("## 2. 前回との差分"))
+            self.assertLess(text.index("## 2. 前回との差分"), text.index("## 3. 参考"))
+        finally:
+            shutil.rmtree(out)
+
+
+class ReportDiffTest(unittest.TestCase):
+    def test_report_embeds_diff(self):
+        out = tempfile.mkdtemp()
+        try:
+            shutil.copy(os.path.join(FIX, "facts.json"), out)
+            with open(os.path.join(out, "threats.json"), "w") as fp:
+                json.dump([{"threats": []}], fp)
+            with open(os.path.join(out, "ipa-checklist.csv"), "w", encoding="utf-8-sig", newline="") as fp:
+                w = csv.writer(fp)
+                w.writerow(["集計", ""])
+                w.writerow(["グループ", "項目 No", "項目", "状態", "要対応（脅威検出数）", "未入力（脅威検出数）"])
+            with open(os.path.join(out, "diff.md"), "w", encoding="utf-8") as fp:
+                fp.write("# 差分\n\n## 追加\n\n- 新しい入口 :7000\n")
+            sys_argv = sys.argv
+            sys.argv = ["report.py", out]
+            try:
+                report.main()
+            finally:
+                sys.argv = sys_argv
+            with open(os.path.join(out, "report.md"), encoding="utf-8") as fp:
+                text = fp.read()
+            self.assertIn("### 差分", text)
+            self.assertIn("#### 追加", text)
+            self.assertIn("- 新しい入口 :7000", text)
         finally:
             shutil.rmtree(out)
 
