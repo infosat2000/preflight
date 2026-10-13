@@ -42,8 +42,14 @@ jobs:
         run: |
           # ひな形のままだと台帳を開いて止まる。少し書き換えてから実測の経路を通す
           /usr/bin/python3 -c "import json,os,sys;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
-          test -x "$HOME/Applications/Blackbox Blast Preflight.command"
-          echo | "$HOME/Applications/Blackbox Blast Preflight.command" | tee "$RUNNER_TEMP/launcher.log"
+          app="$HOME/Applications/Blackbox Blast Preflight.app"
+          plutil -lint "$app/Contents/Info.plist"
+          test -s "$app/Contents/Resources/AppIcon.icns"
+          test -x "$app/Contents/MacOS/launcher"
+          # .app はターミナルを開くだけなので、埋め込まれた本体の起動ファイルを直接（対話なしで）実行する
+          eval "$(grep '^TARGET=' "$app/Contents/MacOS/launcher")"
+          test -x "$TARGET"
+          echo | "$TARGET" | tee "$RUNNER_TEMP/launcher.log"
           grep -q 'レポートを開きます' "$RUNNER_TEMP/launcher.log"
       - name: Check outputs
         run: |

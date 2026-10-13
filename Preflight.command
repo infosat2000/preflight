@@ -31,7 +31,7 @@ if ./run.sh 2>&1 | tee "$log"; then
   rm -f "$log"
   if [ -n "$report" ] && [ -f "$report" ]; then
     echo "レポートを開きます: $report"
-    open "$report"
+    open "$report"  # report.html を既定のブラウザで開く
   fi
   finish 0
 else
