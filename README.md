@@ -41,6 +41,9 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 
 結果は `~/.bb-preflight/out/<日時>/` に出ます。
 
+ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
+（ZIP でダウンロードした場合は macOS に止められることがあります。そのときは右クリック →「開く」で一度だけ許可してください。`git clone` で取得した場合は止められません。）
+
 | ファイル | 中身 |
 |---|---|
 | `report.md` | 1 枚まとめ（実測結果・IPA 17 項目の判定・未対応の High 以上の脅威） |

@@ -38,6 +38,12 @@ jobs:
         run: ./run.sh
       - name: run.sh (second run, produces a diff)
         run: ./run.sh
+      - name: Preflight.command (double-click launcher, non-interactive)
+        run: |
+          # ひな形のままだと台帳を開いて止まる。少し書き換えてから実測の経路を通す
+          /usr/bin/python3 -c "import json,os,sys;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
+          echo | ./Preflight.command | tee "$RUNNER_TEMP/launcher.log"
+          grep -q 'レポートを開きます' "$RUNNER_TEMP/launcher.log"
       - name: Check outputs
         run: |
           latest="$(ls -d "$BB_PREFLIGHT_HOME"/out/*/ | sort | tail -1)"
