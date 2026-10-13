@@ -173,7 +173,7 @@ def secret_scan(roots):
     for root in roots:
         root = os.path.expanduser(root)
         for dp, dns, fns in os.walk(root):
-            dns[:] = [d for d in dns if d not in ("node_modules", ".git", "dist", "dist-cli", "vendor-CyberRiskScape", "__pycache__",
+            dns[:] = [d for d in dns if d not in ("node_modules", ".git", "dist", "dist-cli", "vendor", "vendor-CyberRiskScape", "__pycache__",
                                           "venv", ".venv", "site-packages", "out")]
             for fn in fns:
                 if not (fn.endswith(exts) or fn.startswith(".env") or fn in (".npmrc", ".netrc", ".pypirc")
@@ -183,7 +183,8 @@ def secret_scan(roots):
                 try:
                     if os.path.getsize(fp) > 2_000_000:
                         continue
-                    s = open(fp, errors="ignore").read()
+                    with open(fp, errors="ignore") as f:
+                        s = f.read()
                 except Exception:  # noqa: BLE001
                     continue
                 kinds = sorted({n for n, r in rx for v in r.findall(s) if not PLACEHOLDER.search(v if isinstance(v, str) else "")})
@@ -193,7 +194,8 @@ def secret_scan(roots):
 
 
 def main():
-    inv = json.load(open(sys.argv[1]))
+    with open(sys.argv[1], encoding="utf-8") as f:
+        inv = json.load(f)
     facts = {
         "measuredAt": datetime.datetime.now().isoformat(timespec="seconds"),
         "listeners": listeners(),
@@ -204,7 +206,8 @@ def main():
         "secrets": secret_scan(inv.get("secretScanRoots", [])),
     }
     os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
-    json.dump(facts, open(sys.argv[2], "w"), ensure_ascii=False, indent=1)
+    with open(sys.argv[2], "w", encoding="utf-8") as f:
+        json.dump(facts, f, ensure_ascii=False, indent=1)
     print("listeners=%d urls=%d secrets=%d firewall=%s" % (
         len(facts["listeners"]), len(facts["urls"]), len(facts["secrets"]), facts["firewall"]["enabled"]))
 

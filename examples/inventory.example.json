@@ -1,0 +1,83 @@
+{
+  "_comment": "人が管理する台帳のひな形。実測できないこと（外部サービスの認証方式など）を書く。分からない値は書かない（図では「未入力」になる）。認証方式が不明な線は弱い側の Password にする（隠れるより赤く出る方を選ぶ）。秘密情報の値は絶対に書かない。example.com の行は例なので、自分の環境に合わせて書き換えるか消す。",
+  "project": {
+    "name": "Mac の実測点検",
+    "systemName": "このMac・公開サイト・外部サービス・AIエージェント",
+    "businessImpact": "例: 購入者情報・APIキー・販売導線"
+  },
+  "mac": {
+    "label": "このMac",
+    "note": ""
+  },
+  "portNames": {
+    "22": "リモートログイン(SSH)",
+    "88": "Kerberos（共有機能に付随）",
+    "445": "ファイル共有(SMB)",
+    "548": "ファイル共有(AFP)",
+    "631": "プリンタ共有(CUPS)",
+    "3283": "リモートマネージメント",
+    "5900": "画面共有",
+    "5678": "n8n"
+  },
+  "remoteAdminPorts": [22, 3283, 5900, 88, 445, 548, 631],
+  "ephemeralPortFrom": 49152,
+  "endpoints": [
+    {"id": "shop", "url": "https://shop.example.com/"},
+    {"id": "shop-admin", "url": "https://shop.example.com/admin/"},
+    {"id": "old-campaign", "url": "https://old-campaign.example.com/"}
+  ],
+  "secretScanRoots": [
+    "~/Projects",
+    "~/Library/LaunchAgents"
+  ],
+  "publicSites": [
+    {
+      "id": "shop",
+      "label": "ショップ（例）",
+      "endpoint": "shop",
+      "attackSurface": {"hasGlobalIp": true},
+      "visitorAuth": "None",
+      "visitorFlow": "購入者の閲覧・購入"
+    },
+    {
+      "id": "shop-admin",
+      "label": "ショップの管理画面（例）",
+      "endpoint": "shop-admin",
+      "admin": true,
+      "attackSurface": {"hasGlobalIp": true},
+      "authWhenProtected": "Password",
+      "visitorFlow": "管理者のログイン"
+    }
+  ],
+  "dataStores": [
+    {
+      "id": "orders",
+      "type": "DATA_STORE",
+      "label": "注文データ（例）",
+      "from": "shop",
+      "edgeAuth": "Token",
+      "pii": {"label": "購入者のメールアドレス等"}
+    }
+  ],
+  "saas": [
+    {
+      "id": "payments",
+      "type": "SAAS",
+      "label": "決済サービス（例）",
+      "ownerAuth": "Password",
+      "appLinks": [{"from": "shop", "auth": "ApiKey", "flow": "決済・Webhook"}]
+    },
+    {
+      "id": "anthropic",
+      "type": "SAAS",
+      "label": "Anthropic（Claude）",
+      "ownerAuth": "Password"
+    }
+  ],
+  "aiConnectors": {
+    "_comment": "claude.ai 側のコネクタなど、ローカル設定に出ないもの。canSend=外部へ送信・書き込みができるもの。",
+    "items": [
+      {"id": "mail", "label": "メールのコネクタ（例）", "canSend": true}
+    ]
+  }
+}

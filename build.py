@@ -73,10 +73,11 @@ def build(inv, facts):
     today = facts["measuredAt"][:10]
 
     owner = m.node("n-owner", "USER", "本人", "users", userTrustAttribute="Employee")
-    m.node("n-mac", "PC", "メインMac（ファイアウォール: %s）" % ("有効" if fw["enabled"] else "無効"), "local",
-           managedState="Managed",
-           description="実測 %s。待ち受け %d 件。パッチ状況は実測していない（OCLP 環境のため要確認）。" % (
-               facts["measuredAt"], len(facts["listeners"])))
+    mac = inv.get("mac", {})
+    m.node("n-mac", "PC", "%s（ファイアウォール: %s）" % (mac.get("label", "このMac"), "有効" if fw["enabled"] else "無効"),
+           "local", managedState="Managed",
+           description="実測 %s。待ち受け %d 件。パッチ状況は実測していない。%s" % (
+               facts["measuredAt"], len(facts["listeners"]), mac.get("note", "")))
 
     # --- このMacで待ち受けているサーバー ---
     lan_needed = any(l["scope"] in ("all", "lan") for l in facts["listeners"])
@@ -191,7 +192,16 @@ def build(inv, facts):
     return m
 
 
-def assemble(m, prev, measured_at):
+DEFAULT_META = {
+    "name": "Mac の実測点検",
+    "systemName": "このMac・公開サイト・外部サービス・AIエージェント",
+    "purpose": "IPA 注意喚起（2026-10-09）に沿った点検",
+    "businessImpact": "",
+    "securityObjectives": "",
+}
+
+
+def assemble(m, prev, measured_at, meta=None):
     pl = (prev or {}).get("layers", {}).get("L1", {})
     prev_nodes = {n["id"]: n for n in pl.get("nodes", [])}
     prev_edges = {e["id"]: e for e in pl.get("edges", [])}
@@ -229,10 +239,9 @@ def assemble(m, prev, measured_at):
     counters["L1"] = {"node": cn, "edge": ce, "boundary": cb}
     proj = {"schemaVersion": 1, "layers": layers, "activeLayer": "L1", "idCounters": counters,
             "activeFramework": (prev or {}).get("activeFramework", "ALL"),
-            "projectMeta": {"name": "FOREST LIFE* 事業の実測点検", "systemName": "メインMac・公開サイト・外部サービス・AIエージェント",
-                            "purpose": "IPA 注意喚起（2026-10-09）に沿った点検。実測から自動生成（%s）" % measured_at,
-                            "businessImpact": "購入者情報・APIキー・販売導線", "securityObjectives": ""},
+            "projectMeta": dict(DEFAULT_META, **(meta or {})),
             "updatedAt": 0}
+    proj["projectMeta"]["purpose"] += "。実測から自動生成（%s）" % measured_at
     for k in CARRY_KEYS:
         if prev and k in prev:
             proj[k] = prev[k]
@@ -240,15 +249,20 @@ def assemble(m, prev, measured_at):
     return proj
 
 
+def load(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def main():
-    inv = json.load(open(sys.argv[1]))
-    facts = json.load(open(sys.argv[2]))
+    inv, facts = load(sys.argv[1]), load(sys.argv[2])
     out = sys.argv[3]
-    prev = json.load(open(out)) if os.path.exists(out) else None
+    prev = load(out) if os.path.exists(out) else None
     m = build(inv, facts)
-    proj = assemble(m, prev, facts["measuredAt"])
+    proj = assemble(m, prev, facts["measuredAt"], inv.get("project"))
     tmp = out + ".tmp"
-    json.dump(proj, open(tmp, "w"), ensure_ascii=False, indent=1)
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(proj, f, ensure_ascii=False, indent=1)
     os.replace(tmp, out)
     print("nodes=%d edges=%d boundaries=%d (carried decisions: %d)" % (
         len(m.nodes), len(m.edges), len(m.bounds), len(proj.get("suppressions", {}))))

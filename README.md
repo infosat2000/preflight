@@ -1,0 +1,117 @@
+# riskscape
+
+**Mac の実測結果から脅威モデルを自動で作り、IPA の注意喚起と 221 本の脅威ルールで点検するツール**
+
+このMacで実際に待ち受けているポート、ファイアウォールの状態、公開サイトの未認証応答、AI エージェントの定期ジョブ、平文の鍵などを読み取り専用で調べ、
+その結果から [CyberRiskScape](https://github.com/takashi-ohmoto-git/CyberRiskScape)（OSS の脅威モデリングツール）の構成図を自動生成して評価します。
+前回との差分を取るので、「知らないうちに増えた入口」に気付けます。
+
+- 何も変更しません（プロセスの停止や設定変更はしない）。sudo も使いません。
+- 秘密情報の値はどのファイルにも書きません（見つかった鍵はファイル名と種類だけ）。
+- 外部への通信は、台帳に書いた自分の公開URLへの確認アクセスだけです。
+
+## 必要なもの
+
+- macOS（`lsof`・`netstat`・`socketfilterfw`・`nc` を使います）
+- python3（macOS 標準の 3.9 で動きます。追加のライブラリは不要）
+- Node.js と npm、git（評価エンジンの取得とビルドに使います）
+
+## はじめかた
+
+```bash
+git clone <このリポジトリ> riskscape && cd riskscape
+./setup.sh      # CyberRiskScape v0.6.0 を取得・ビルドし、~/.riskscape/inventory.json にひな形を置く
+# ~/.riskscape/inventory.json を自分の環境に合わせて書き換える（下の「台帳の書き方」）
+./run.sh        # 実測 → 評価 → レポート
+```
+
+結果は `~/.riskscape/out/<日時>/` に出ます。
+
+| ファイル | 中身 |
+|---|---|
+| `report.md` | 1 枚まとめ（実測結果・IPA 17 項目の判定・未対応の High 以上の脅威） |
+| `ipa-checklist.csv` / `.md` | IPA 注意喚起（2026-10-09）17 項目のチェックリスト |
+| `threats.json` | 検出された全脅威 |
+| `diff.md` | 前回との差分（2 回目以降） |
+| `facts.json` | 実測の生データ |
+
+### 個人データの置き場所
+
+台帳・構成図・レポートは**自分の弱点の地図**なので、コードとは別の `~/.riskscape/`（権限 700）に置きます。
+場所は環境変数 `RISKSCAPE_HOME` で変えられます。リポジトリの `.gitignore` でも `inventory.json`・`model.json`・`out/` を除外しています。
+
+すでに CyberRiskScape の CLI をビルド済みなら、`CRS_CLI=/path/to/dist-cli/main.js ./setup.sh` で取得を省略できます（`run.sh` にも同じ変数を渡してください）。
+
+## 判断の記録（リスク受容など）
+
+`~/.riskscape/model.json` を CyberRiskScape のアプリで開き、「リスク受容」などの判断を記録して同じファイルに保存します。
+次に `run.sh` を回しても判断は残ります（ノード ID を実測内容から決めているため）。
+
+アプリは github.io のデモではなく、手元で起動してください。構成図を他サイトの保存領域に残さないためです。
+
+```bash
+cd vendor/CyberRiskScape && npm run build && npx vite preview --host 127.0.0.1
+```
+
+## 台帳の書き方（inventory.json）
+
+実測できないこと（外部サービスの認証方式、データの置き場所、claude.ai のコネクタなど）を人が書きます。
+ひな形は [examples/inventory.example.json](examples/inventory.example.json) です。
+
+| キー | 中身 |
+|---|---|
+| `project` | 構成図の名前・対象システム・事業への影響（任意） |
+| `mac` | このMacの表示名と補足（任意） |
+| `portNames` | ポート番号 → 表示名。root 所有でプロセス名が分からない待ち受けに名前を付ける |
+| `remoteAdminPorts` | 遠隔管理・共有系のポート。LAN 側の IP で開いているか実際に試す |
+| `endpoints` | 未認証でアクセスして応答を確かめる公開URL。**ID が `old-` で始まるものは「解約済みのはず」の入口**として扱い、応答したら赤で出す |
+| `secretScanRoots` | 平文の鍵を探すフォルダ |
+| `publicSites` | 公開サイト。`admin: true` は管理画面で、`endpoint` の応答が 401/403/Cloudflare Access なら認証あり、200 なら認証なしとして描く |
+| `dataStores` | データの置き場所。`pii` を書くと個人情報として描く |
+| `saas` | 外部サービス。`ownerAuth` は管理画面へのログイン方式。`id: "anthropic"` があると Claude の呼び出し線を引く |
+| `aiConnectors.items` | ローカル設定に出ない AI のコネクタ。`canSend: true` は外部へ送信・書き込みできるもの |
+
+約束ごと:
+
+1. **実測していない値は書かない。** 分からない属性は空のまま（アプリでは「未入力」）。もっともらしい値で埋めると、穴が「問題なし」に化ける。
+2. **認証方式が分からない線は Password にする**（弱い側に倒す）。隠れるより赤く出る方を選ぶ。
+3. 秘密情報の値はどのファイルにも書かない。
+
+## 実測 → 構成図の対応
+
+| 実測 | ノード | 属性・線 |
+|---|---|---|
+| 127.0.0.1 / ::1 だけで待ち受け | PROCESS（Mac 内の処理） | 外から線を引かない（雑音を出さない） |
+| Tailscale IP（100.64/10）で待ち受け | FRONT_END_SERVER | hasGlobalIp=false, hasSourceIpRestriction=true / 本人の端末から VPN・E2EE・認証 None |
+| `*` / 0.0.0.0 / LAN IP で待ち受け | FRONT_END_SERVER | hasGlobalIp=false, hasSourceIpRestriction=false（遠隔管理ポートは hasRemoteAccessRestriction=false も）/ 「LAN 上の他の機器」から VPC・Plain・認証 None |
+| 公開管理画面が 401/403/Access へ転送 | FRONT_END_SERVER | hasUserAuthentication=true、線の認証は台帳の値 |
+| 公開管理画面が 200 で開く | 同上 | hasUserAuthentication=false、線の認証 None（赤） |
+| 解約済みドメインが応答 | FRONT_END_SERVER | 「解約済みのはずの入口が応答」として赤で追加 |
+| claude を呼ぶ launchd ジョブ | AGENT | Anthropic へ Token の線 |
+| 平文の鍵らしき文字列 | CREDENTIAL（Mac の中） | ダミー値（xxx・your・example 等）は除外 |
+| ファイアウォール | report.md の 1 節で判定 | Mac ノードのラベルにも状態を書く |
+
+ノード ID は実測内容から決めます（例 `n-all-22`、`n-tailscale-4880`、随時変わるポートはプロセス名から）。連番にしないので、再実測しても判断と座標が引き継がれます。
+
+## 分かっている限界
+
+- 平文の鍵の検出は API キー形式（Anthropic・GitHub・Stripe live・AWS・Groq）と秘密鍵だけ。**平文パスワードは検出できない。**
+- root 所有の待ち受けはプロセス名が分からない（sudo を使わない方針）。`portNames` で名前を付ける。
+- 図に出せるのは「入口があるか」まで。ファイアウォールのアプリ単位の許可で、実際に LAN から届くかは確かめていない（別の機器からの試験はしない）。
+- claude を呼ぶ定期ジョブの判定は、plist の引数と、そこから直接呼ばれるスクリプトの本文まで。別スクリプトを挟む呼び出しは数えていない。
+- 外部サービスのログ保持・MFA の有無は台帳頼み。
+- 「問題なし」「対象なし」は、該当する要素を台帳に書いていないだけの場合がある。
+
+## 開発
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+評価エンジン（`vendor/CyberRiskScape` か `CRS_CLI`）があれば、生成した構成図を本物の CLI で評価する結合テストも走ります。
+評価エンジンの版を上げるときは、`setup.sh` の `CRS_TAG` と `CRS_COMMIT` を両方書き換え、テストを通してください。
+
+## ライセンス
+
+Apache License 2.0。評価エンジンの CyberRiskScape（Copyright 2026 TAKASHI OMOTO、Apache 2.0）はこのリポジトリには含まず、`setup.sh` が公式リポジトリから取得します。詳しくは [NOTICE](NOTICE)。
+本ツールは CyberRiskScape プロジェクトとは関係のない独立したプロジェクトです。

@@ -1,0 +1,10 @@
+# 個人データ（弱点の地図）は絶対にリポジトリに入れない。既定の置き場所は ~/.riskscape
+inventory.json
+model.json
+model.json.tmp
+out/
+# 評価エンジンは setup.sh で取得する
+vendor/
+__pycache__/
+*.pyc
+.DS_Store

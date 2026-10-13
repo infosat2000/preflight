@@ -9,9 +9,12 @@ import sys
 
 def main():
     out = sys.argv[1]
-    facts = json.load(open(os.path.join(out, "facts.json")))
-    threats = json.load(open(os.path.join(out, "threats.json")))[0]["threats"]
-    rows = list(csv.reader(open(os.path.join(out, "ipa-checklist.csv"), encoding="utf-8-sig")))
+    with open(os.path.join(out, "facts.json"), encoding="utf-8") as f:
+        facts = json.load(f)
+    with open(os.path.join(out, "threats.json"), encoding="utf-8") as f:
+        threats = json.load(f)[0]["threats"]
+    with open(os.path.join(out, "ipa-checklist.csv"), encoding="utf-8-sig") as f:
+        rows = list(csv.reader(f))
     summary = next((r[1] for r in rows if r and r[0] == "集計"), "")
     head = next(i for i, r in enumerate(rows) if r and r[0] == "グループ")
     items = [dict(zip(rows[head], r)) for r in rows[head + 1:] if len(r) > 3]
@@ -53,7 +56,7 @@ def main():
     else:
         L.append("- 平文の鍵らしき文字列: 検出なし（対象は API キー形式と秘密鍵のみ。平文パスワードは検出できない）")
     ag = facts["agents"]
-    L.append("- AIエージェント: ローカル MCP %s / claude を呼ぶ定期ジョブ %d 本（%s。agent-kernel 経由などの多段呼び出しは未計上）" % (
+    L.append("- AIエージェント: ローカル MCP %s / claude を呼ぶ定期ジョブ %d 本（%s。別のスクリプトを挟む多段呼び出しは未計上）" % (
         ", ".join(ag["local_mcp_servers"]) or "なし", len(ag["claude_launchd_jobs"]), ", ".join(ag["claude_launchd_jobs"])))
     L.append("")
 
@@ -93,7 +96,8 @@ def main():
         L.append("## 4. 前回との差分")
         L.append("")
         L.append("詳細は [diff.md](%s) を参照。" % d)
-    open(os.path.join(out, "report.md"), "w").write("\n".join(L) + "\n")
+    with open(os.path.join(out, "report.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(L) + "\n")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,19 @@
+{
+ "measuredAt": "2026-10-13T11:00:00",
+ "listeners": [
+  {"process": "sshd", "pid": "", "addr": "*:22", "port": 22, "scope": "all"},
+  {"process": "MyServer", "pid": "101", "addr": "*:4870", "port": 4870, "scope": "all"},
+  {"process": "Helper App", "pid": "102", "addr": "*:58906", "port": 58906, "scope": "all"},
+  {"process": "Dashboard", "pid": "103", "addr": "100.101.102.103:4880", "port": 4880, "scope": "tailscale"},
+  {"process": "node", "pid": "104", "addr": "127.0.0.1:5678", "port": 5678, "scope": "loopback"}
+ ],
+ "firewall": {"enabled": true, "stealth": false, "raw": "Firewall is enabled. (State = 1)"},
+ "lanProbe": [{"ip": "192.168.1.10", "port": 22, "open": true}, {"ip": "192.168.1.10", "port": 5900, "open": false}],
+ "urls": [
+  {"id": "shop", "url": "https://shop.example.com/", "code": "200", "redirect": "", "verdict": "open"},
+  {"id": "shop-admin", "url": "https://shop.example.com/admin/", "code": "200", "redirect": "", "verdict": "open"},
+  {"id": "old-campaign", "url": "https://old-campaign.example.com/", "code": "301", "redirect": "https://x.example.com/", "verdict": "other"}
+ ],
+ "agents": {"local_mcp_servers": ["local-fs"], "claude_launchd_jobs": ["com.example.nightly"], "enabled_plugins": 3},
+ "secrets": [{"file": "/Users/someone/Projects/app/.env", "kinds": ["anthropic"]}]
+}
