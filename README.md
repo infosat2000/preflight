@@ -134,6 +134,12 @@ python3 -m unittest discover -s tests
 評価エンジン（`vendor/CyberRiskScape` か `CRS_CLI`）があれば、生成した構成図を本物の CLI で評価する結合テストも走ります。
 評価エンジンの版を上げるときは、`setup.sh` の `CRS_TAG` と `CRS_COMMIT` を両方書き換え、テストを通してください。
 
+## バージョン
+
+版は `VERSION` ファイルだけで管理しています（[セマンティック バージョニング](https://semver.org/lang/ja/)）。
+レポートの上端と末尾、`./run.sh --version`、アプリの「情報を見る」に同じ番号が出ます。
+変更の記録は [CHANGELOG.md](CHANGELOG.md) にあります。版を上げるときは、`VERSION` と `CHANGELOG.md` を同じコミットで書き換えます。
+
 ## ライセンス
 
 Apache License 2.0。評価エンジンの CyberRiskScape（Copyright 2026 TAKASHI OMOTO、Apache 2.0）はこのリポジトリには含まず、`setup.sh` が公式リポジトリから取得します。詳しくは [NOTICE](NOTICE)。

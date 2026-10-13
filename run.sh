@@ -7,6 +7,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DATA="${BB_PREFLIGHT_HOME:-$HOME/.bb-preflight}"
 CRS="${CRS_CLI:-$HERE/vendor/CyberRiskScape/dist-cli/main.js}"
 if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"; elif [ -x /usr/bin/python3 ]; then PY=/usr/bin/python3; else PY=python3; fi
+VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
+if [ "${1:-}" = "--version" ]; then echo "Blackbox Blast Preflight v$VERSION"; exit 0; fi
+echo "Blackbox Blast Preflight v$VERSION"
 INV="$DATA/inventory.json"
 MODEL="$DATA/model.json"
 

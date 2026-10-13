@@ -425,6 +425,20 @@ class EasyReportTest(unittest.TestCase):
             shutil.rmtree(out)
 
 
+class VersionTest(unittest.TestCase):
+    def test_one_version_everywhere(self):
+        import easy_report
+        with open(os.path.join(ROOT, "VERSION"), encoding="utf-8") as fp:
+            v = fp.read().strip()
+        self.assertRegex(v, r"^\d+\.\d+\.\d+$")
+        self.assertEqual(report.version(), v)
+        self.assertEqual(easy_report.build_data(facts())["version"], v)
+        with open(os.path.join(ROOT, "CHANGELOG.md"), encoding="utf-8") as fp:
+            self.assertIn("## [%s]" % v, fp.read())  # every version has a changelog entry
+        with open(os.path.join(ROOT, "setup.sh"), encoding="utf-8") as fp:
+            self.assertIn("<string>$VERSION</string>", fp.read())  # the app's Info.plist takes it from VERSION
+
+
 class RepoHygieneTest(unittest.TestCase):
     def test_personal_data_is_ignored(self):
         with open(os.path.join(ROOT, ".gitignore")) as f:

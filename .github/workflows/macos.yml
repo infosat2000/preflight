@@ -44,6 +44,8 @@ jobs:
           /usr/bin/python3 -c "import json,os,sys;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
           app="$HOME/Applications/Blackbox Blast Preflight.app"
           plutil -lint "$app/Contents/Info.plist"
+          # アプリの版は VERSION ファイルと同じ
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$(tr -d '[:space:]' < VERSION)"
           test -s "$app/Contents/Resources/AppIcon.icns"
           test -x "$app/Contents/MacOS/launcher"
           # .app はターミナルを開くだけなので、埋め込まれた本体の起動ファイルを直接（対話なしで）実行する

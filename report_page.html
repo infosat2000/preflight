@@ -150,6 +150,7 @@ footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font:11
 footer .mark{display:flex;align-items:center;gap:8px;margin-top:10px;font:12px/1.5 var(--font);letter-spacing:0;color:var(--muted)}
 footer .mark svg{width:18px;height:18px;flex:none}
 footer .mark b{color:var(--ink-strong);font-weight:700}
+.brand .ver{margin-left:8px;text-transform:none;font:600 11px/1 var(--mono);color:var(--dim);letter-spacing:.04em}
 
 @keyframes rise{from{transform:translateY(12px)}to{transform:none}}
 @keyframes lampon{from{opacity:.25;box-shadow:none}}
@@ -167,7 +168,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
 </style>
 
 <header class="bar">
-  <span class="brand"><span class="rec" aria-hidden="true"></span>Blackbox Blast<span class="long">&nbsp;Preflight</span></span>
+  <span class="brand"><span class="rec" aria-hidden="true"></span>Blackbox Blast<span class="long">&nbsp;Preflight</span><span class="ver" id="ver-bar"></span></span>
   <span class="sp"></span>
   <div class="lang" role="group" aria-label="Language">
     <button type="button" id="btn-ja" data-lang-btn="ja" aria-pressed="true">JA</button>
@@ -251,7 +252,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     <div>BLACKBOX BLAST PREFLIGHT · RULE-BASED · NOTHING LEAVES THIS MAC</div>
     <div class="mark" lang="en">
       <svg viewBox="0 0 116 116" aria-hidden="true"><rect width="116" height="116" rx="22" fill="#ff7a1a"/><rect x="36" y="36" width="44" height="44" rx="7" fill="#0c0d0f"/></svg>
-      <span><b>Blackbox Blast™</b> · © 2026 Blackbox Blast. All rights reserved.</span>
+      <span><b>Blackbox Blast™</b> · <span id="ver-foot"></span>© 2026 Blackbox Blast. All rights reserved.</span>
     </div>
   </footer>
 </div>
@@ -363,6 +364,8 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     ["ja", "en"].forEach(function (l) { $("btn-" + l).setAttribute("aria-pressed", String(l === lang)); });
     Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (n) { n.textContent = U[n.getAttribute("data-i18n")]; });
     if (D.demo) $("demo").hidden = false;
+    $("ver-bar").textContent = D.version ? "v" + D.version : "";
+    $("ver-foot").textContent = D.version ? "Preflight v" + D.version + " · " : "";
     $("when").textContent = D.measuredAt ? U.measured + D.measuredAt : "";
     $("code").textContent = CODE[D.verdict];
     $("code").className = "code " + D.verdict;

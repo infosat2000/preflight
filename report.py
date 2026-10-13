@@ -10,6 +10,14 @@ import json
 import os
 import sys
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+def version():
+    """このツールの版。VERSION ファイルが唯一の置き場所。"""
+    with open(os.path.join(HERE, "VERSION"), encoding="utf-8") as f:
+        return f.read().strip()
+
 
 def build(out, lang):
     J = lang == "ja"
@@ -30,6 +38,7 @@ def build(out, lang):
 
     L = []
     L.append(T("# 実測点検レポート（%s）", "# Measured check report (%s)") % facts["measuredAt"].replace("T", " "))
+    L.append(T("Blackbox Blast Preflight v%s で作成", "Made with Blackbox Blast Preflight v%s") % version())
     L.append("")
     if not J:
         L.append("Names that come from CyberRiskScape (threats, IPA checklist items, the diff) are kept in the original Japanese.")

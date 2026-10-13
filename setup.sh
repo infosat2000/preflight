@@ -10,6 +10,9 @@ CRS_REPO="https://github.com/takashi-ohmoto-git/CyberRiskScape.git"
 CRS_TAG="v0.6.0"
 CRS_COMMIT="71834024f8f7ad9c1bc134dfbe2ea330316dbcd6"
 DEST="$HERE/vendor/CyberRiskScape"
+# このツールの版（VERSION ファイルが唯一の置き場所）
+VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
+echo "Blackbox Blast Preflight v$VERSION"
 
 for c in git node npm; do
   command -v "$c" >/dev/null || { echo "$c が見つかりません。先にインストールしてください。" >&2; exit 1; }
@@ -52,7 +55,7 @@ if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
   # 本体の場所を埋め込む（フォルダを移したら setup.sh をもう一度実行する）
   printf '#!/bin/bash\nTARGET=%q\nexec open -a Terminal "$TARGET"\n' "$HERE/Preflight.command" > "$APP/Contents/MacOS/launcher"
   chmod 755 "$APP/Contents/MacOS/launcher"
-  cat > "$APP/Contents/Info.plist" <<'PLIST'
+  cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -63,7 +66,8 @@ if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
   <key>CFBundleExecutable</key><string>launcher</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
   <key>LSUIElement</key><true/>
 </dict>
 </plist>

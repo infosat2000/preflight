@@ -525,10 +525,17 @@ def changes(prev, cur):
     return {"better": better, "worse": worse}
 
 
+def version():
+    """このツールの版。VERSION ファイルが唯一の置き場所。"""
+    with open(os.path.join(HERE, "VERSION"), encoding="utf-8") as f:
+        return f.read().strip()
+
+
 def build_data(facts, prev=None, detail=""):
     todo, ok = analyze(facts)
     reds = sum(1 for f in todo if f["level"] == RED)
     return {
+        "version": version(),
         "measuredAt": facts.get("measuredAt", "").replace("T", " "),
         "verdict": RED if reds else YELLOW if todo else GREEN,
         "counts": {"red": reds, "yellow": len(todo) - reds, "ok": len(ok)},
