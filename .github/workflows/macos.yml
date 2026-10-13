@@ -18,8 +18,6 @@ jobs:
       matrix:
         os: [macos-latest]  # Apple Silicon
     runs-on: ${{ matrix.os }}
-    env:
-      RISKSCAPE_HOME: ${{ runner.temp }}/riskscape-home
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +25,7 @@ jobs:
           node-version: 22
       - name: Environment
         run: |
+          echo "RISKSCAPE_HOME=$RUNNER_TEMP/riskscape-home" >> "$GITHUB_ENV"
           sw_vers
           uname -m
           /usr/bin/python3 --version
