@@ -189,6 +189,22 @@ SECRET_PATTERNS = [
 PLACEHOLDER = re.compile(r"x{3,}|X{3,}|your|example|dummy|\.\.\.|\*{3,}", re.I)
 
 
+def storage(fp):
+    """鍵が見つかったファイルの置き方。本人しか読めないか、Git の追跡から外れているか。"""
+    try:
+        private = os.stat(fp).st_mode & 0o077 == 0
+    except OSError:
+        private = None
+    try:
+        r = subprocess.run(["git", "-C", os.path.dirname(fp), "check-ignore", "-q", fp],
+                           capture_output=True, timeout=10)
+        # 0: 無視されている / 1: 無視されていない（追跡されうる）/ それ以外: Git の管理外
+        git_ignored = True if r.returncode == 0 else False if r.returncode == 1 else None
+    except Exception:  # noqa: BLE001
+        git_ignored = None
+    return {"private": private, "gitIgnored": git_ignored}
+
+
 def secret_scan(roots):
     """平文の鍵らしき文字列を探す。値は出さず、ファイル名と種類だけ返す。"""
     hits = []
@@ -213,7 +229,7 @@ def secret_scan(roots):
                     continue
                 kinds = sorted({n for n, r in rx for v in r.findall(s) if not PLACEHOLDER.search(v if isinstance(v, str) else "")})
                 if kinds:
-                    hits.append({"file": fp, "kinds": kinds})
+                    hits.append(dict({"file": fp, "kinds": kinds}, **storage(fp)))
     return hits
 
 

@@ -20,7 +20,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.75 var(--sans);-w
 .demo{border:1px dashed var(--orange);color:var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:18px;font-size:13px}
 header.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
 header.top h1{margin:6px 0 0;font-size:24px;line-height:1.3;font-weight:700;letter-spacing:.01em;text-wrap:balance}
-header.top .when{font:12px/1.4 var(--mono);color:var(--muted);text-align:right}
+header.top .when{font:12px/1.4 var(--mono);color:var(--muted);text-align:right;overflow-wrap:anywhere}
 
 /* hero */
 .hero{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:20px;align-items:stretch;
@@ -31,7 +31,7 @@ header.top .when{font:12px/1.4 var(--mono);color:var(--muted);text-align:right}
 .code{font:800 44px/1 var(--mono);letter-spacing:.08em}
 .code.red{color:var(--red)} .code.yellow{color:var(--amber)} .code.green{color:var(--green)}
 .headline{font-size:19px;font-weight:700;line-height:1.5;text-wrap:balance;margin:0}
-.gauges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.gauges{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:10px}
 .gauge{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .gauge b{display:block;font:700 28px/1.1 var(--mono);font-variant-numeric:tabular-nums}
 .gauge span{font-size:12px;color:var(--muted)}
@@ -40,7 +40,7 @@ header.top .when{font:12px/1.4 var(--mono);color:var(--muted);text-align:right}
 /* checklist strip */
 .checklist{margin:18px 0 8px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .ck{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
-.ck .lamp{flex:none;width:10px;height:10px;border-radius:50%;background:#3a3f47;box-shadow:none}
+.ck .lamp{flex:none;width:10px;height:10px;border-radius:50%;background:#3a3f47;box-shadow:none;animation:lampon .4s ease-out backwards}
 .ck .lbl{flex:1;min-width:0;font-size:13.5px;overflow-wrap:anywhere}
 .ck .st{font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--muted)}
 .ck.on.red .lamp{background:var(--red);box-shadow:0 0 10px var(--red)}
@@ -58,7 +58,9 @@ h2 .eyebrow{color:var(--orange)}
 .task header{display:flex;gap:10px;align-items:flex-start}
 .pill{flex:none;font:700 11px/1 var(--mono);letter-spacing:.08em;border-radius:999px;padding:6px 10px;margin-top:2px}
 .pill.red{background:var(--red-dim);color:var(--red)} .pill.yellow{background:var(--amber-dim);color:var(--amber)}
-.task h3{margin:0;font-size:16.5px;line-height:1.55;text-wrap:balance;min-width:0}
+.task h3{margin:0;font-size:16.5px;line-height:1.55;text-wrap:balance;min-width:0;overflow-wrap:anywhere}
+.task header > *{min-width:0}
+.readout > *,.hero > *{min-width:0}
 .task dl{display:grid;grid-template-columns:7.5em minmax(0,1fr);gap:6px 14px;margin:14px 0 0}
 .task dt{font-size:12.5px;color:var(--muted);padding-top:2px}
 .task dd{margin:0;overflow-wrap:anywhere}
@@ -83,16 +85,18 @@ summary:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-of
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.6 var(--mono);color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-height:60vh;overflow:auto}
 footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--muted);letter-spacing:.06em}
 
-@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes rise{from{transform:translateY(12px)}to{transform:none}}
+@keyframes lampon{from{opacity:.25;box-shadow:none}}
 @media (max-width:640px){
   .hero{grid-template-columns:minmax(0,1fr)}
   .scope{max-width:260px;margin:0 auto;width:100%}
   .code{font-size:36px}
-  .checklist{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .checklist{grid-template-columns:minmax(0,1fr)}
+  header.top .when{text-align:left}
   .task dl{grid-template-columns:minmax(0,1fr)}
   .task dt{padding-top:6px}
 }
-@media (prefers-reduced-motion:reduce){.task{animation:none}}
+@media (prefers-reduced-motion:reduce){.task,.ck .lamp{animation:none}}
 </style>
 
 <div class="wrap" id="app">
@@ -170,14 +174,7 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--muted);letter-spaci
   $("code").className = "code " + D.verdict;
   $("headline").textContent = head;
 
-  // count up
-  [["n-red", c.red], ["n-yellow", c.yellow], ["n-ok", c.ok]].forEach(function (p) {
-    var node = $(p[0]), end = p[1];
-    if (reduce || !end) { node.textContent = end; return; }
-    var t0 = null;
-    function step(t) { if (!t0) t0 = t; var k = Math.min(1, (t - t0) / 900); node.textContent = Math.round(end * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); }
-    requestAnimationFrame(step);
-  });
+  $("n-red").textContent = c.red; $("n-yellow").textContent = c.yellow; $("n-ok").textContent = c.ok;
 
   // checklist: lamps light one by one
   var ST = { red: "NO-GO", yellow: "CHECK", green: "OK" };
@@ -185,11 +182,10 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--muted);letter-spaci
     var row = el("div", "ck " + ck.level);
     row.appendChild(el("span", "lamp"));
     row.appendChild(el("span", "lbl", ck.label));
-    var st = el("span", "st mono", reduce ? ST[ck.level] : "···");
-    row.appendChild(st);
+    row.classList.add("on");
+    row.firstChild.style.animationDelay = (0.35 + i * 0.22) + "s";
+    row.appendChild(el("span", "st mono", ST[ck.level]));
     $("checklist").appendChild(row);
-    function on() { row.classList.add("on"); st.textContent = ST[ck.level]; }
-    if (reduce) on(); else setTimeout(on, 350 + i * 220);
   });
 
   // tasks

@@ -62,6 +62,18 @@ SECRET_KINDS = {
 }
 
 
+def key_kinds(hits):
+    return sorted({SECRET_KINDS.get(k, k) for h in hits for k in h.get("kinds", [])})
+
+
+def why_loose(hits):
+    if any(h.get("gitIgnored") is False for h in hits):
+        return "Git で管理しているフォルダにあり、GitHub などに上がるおそれがあります"
+    if any(h.get("private") is False for h in hits):
+        return "このMacのほかのユーザーやアプリからも読める設定です"
+    return "パスワード管理アプリなどではなく、ふつうのファイルに置かれています"
+
+
 def finding(cat, level, title, what, why, how):
     return {"cat": cat, "level": level, "title": title, "what": what, "why": why, "how": how}
 
@@ -136,7 +148,7 @@ def analyze(facts):
         good("apps", "外からつながれる状態の、心当たりのないアプリはありませんでした。")
     inner = [l for l in facts.get("listeners", []) if l.get("scope") in ("loopback", "tailscale")]
     if inner:
-        good("apps", "%d 件の待ち受けは、このMacの中か Tailscale の中だけに閉じています。" % len(inner))
+        good("apps", "%d 件の待ち受けは、このMacの中か Tailscale（自分の機器どうしだけをつなぐ VPN）の中だけに閉じています。" % len(inner))
     if normal:
         good("apps", "Apple の標準機能の待ち受けは普通の動きです: " + "、".join(normal))
 
@@ -165,16 +177,26 @@ def analyze(facts):
         good("sites", "登録した公開サイトに、気になる応答はありませんでした。")
 
     secrets = facts.get("secrets", [])
-    if secrets:
-        kinds = sorted({SECRET_KINDS.get(k, k) for h in secrets for k in h.get("kinds", [])})
-        files = [h["file"] for h in secrets]
+    # .env 系で、本人しか読めず、Git に載らない置き方なら、開発ではふつう（確認だけ）。それ以外は赤
+    tidy = [h for h in secrets if os.path.basename(h["file"]).startswith(".env")
+            and h.get("private") and h.get("gitIgnored") is not False]
+    loose = [h for h in secrets if h not in tidy]
+    if loose:
         todo.append(finding(
-            "keys", RED, "大事な鍵（API キーなど）が、ふつうのファイルに書かれています",
-            "%s が、次のファイルにそのまま書かれています: %s（鍵の中身はこのレポートに書いていません）" % (
-                "、".join(kinds), "、".join(files)),
-            "ファイルがうっかり共有・公開されたり、AI ツールに読まれたりすると、他人に鍵を使われて料金を請求されることがあります。",
-            "使っていない鍵は、そのサービスの管理画面で無効にします。使う鍵はパスワード管理アプリやキーチェーンに移し、ファイルからは消します。"))
-    else:
+            "keys", RED, "大事な鍵（API キーなど）が、人に見られやすい置き方になっています",
+            "%s が、次のファイルにそのまま書かれています: %s。%s（鍵の中身はこのレポートに書いていません）" % (
+                "、".join(key_kinds(loose)), "、".join(h["file"] for h in loose), why_loose(loose)),
+            "ファイルがうっかり共有・公開されたり、GitHub に上がったり、AI ツールに読まれたりすると、他人に鍵を使われて料金を請求されることがあります。",
+            "使っていない鍵は、そのサービスの管理画面で無効にします。使う鍵はパスワード管理アプリやキーチェーンに移し、ファイルからは消します。"
+            "GitHub に上げたことがある鍵は、作り直してください。"))
+    if tidy:
+        todo.append(finding(
+            "keys", YELLOW, "API キーが、設定ファイル（.env）に書かれています",
+            "%s が、次のファイルに書かれています: %s。本人しか読めない設定で、Git にも載らないようになっています。" % (
+                "、".join(key_kinds(tidy)), "、".join(h["file"] for h in tidy)),
+            "開発ではよくある置き方で、すぐ危ないわけではありません。ただ、ファイルごとコピーしたり、AI ツールにフォルダを読ませたりすると、鍵も一緒に渡ります。",
+            "使っていない鍵は、そのサービスの管理画面で無効にします。大事な鍵は、パスワード管理アプリやキーチェーンに移すとより安全です。"))
+    if not secrets:
         good("keys", "API キーなどの鍵が、調べた範囲のファイルにそのまま書かれてはいませんでした。")
 
     jobs = facts.get("agents", {}).get("claude_launchd_jobs", [])
@@ -271,8 +293,12 @@ def main():
         with open(md, encoding="utf-8") as f:
             detail = f.read()
     data = build_data(facts, previous_facts(out), detail)
-    with open(os.path.join(out, "report.html"), "w", encoding="utf-8") as f:
+    path = os.path.join(out, "report.html")
+    # 中身は自分の弱点の地図なので、run.sh の外から呼ばれても本人しか読めないようにする
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(page(data))
+    os.chmod(path, 0o600)
 
 
 if __name__ == "__main__":

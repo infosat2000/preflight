@@ -96,7 +96,8 @@ class SecretScanTest(unittest.TestCase):
         key = "sk-" + "ant-" + "a1B2c3D4e5F6g7H8i9J0kLmNoPq"
         p = self.write("app/.env", "ANTHROPIC_API_KEY=%s\n" % key)
         hits = collect.secret_scan([self.root])
-        self.assertEqual(hits, [{"file": p, "kinds": ["anthropic"]}])
+        self.assertEqual([{k: h[k] for k in ("file", "kinds")} for h in hits], [{"file": p, "kinds": ["anthropic"]}])
+        self.assertEqual(set(hits[0]), {"file", "kinds", "private", "gitIgnored"})  # never the value
         self.assertNotIn(key, json.dumps(hits))
 
     def test_ignores_placeholders_and_skipped_dirs(self):
@@ -305,6 +306,35 @@ class EasyReportTest(unittest.TestCase):
         self.assertEqual(d["verdict"], "green")
         self.assertTrue(any("rapportd" in x for x in d["ok"]))
 
+    def test_tidy_env_file_is_caution_not_nogo(self):
+        import easy_report
+        f = facts()
+        f["lanProbe"], f["urls"], f["listeners"] = [], [], []
+        f["agents"]["claude_launchd_jobs"] = []
+        f["secrets"] = [{"file": "/Users/someone/app/.env.local", "kinds": ["anthropic"], "private": True, "gitIgnored": True}]
+        d = easy_report.build_data(f)
+        self.assertEqual(d["verdict"], "yellow")
+        f["secrets"][0]["gitIgnored"] = False   # in a repo and not ignored: could be pushed
+        self.assertEqual(easy_report.build_data(f)["verdict"], "red")
+        f["secrets"][0].update(gitIgnored=True, private=False)  # readable by others
+        self.assertEqual(easy_report.build_data(f)["verdict"], "red")
+
+    def test_storage_reads_permissions_and_gitignore(self):
+        d = tempfile.mkdtemp()
+        try:
+            subprocess.run(["git", "init", "-q", d], check=True)
+            with open(os.path.join(d, ".gitignore"), "w") as fp:
+                fp.write(".env\n")
+            for name in (".env", "config.py"):
+                with open(os.path.join(d, name), "w") as fp:
+                    fp.write("x")
+            os.chmod(os.path.join(d, ".env"), 0o600)
+            os.chmod(os.path.join(d, "config.py"), 0o644)
+            self.assertEqual(collect.storage(os.path.join(d, ".env")), {"private": True, "gitIgnored": True})
+            self.assertEqual(collect.storage(os.path.join(d, "config.py")), {"private": False, "gitIgnored": False})
+        finally:
+            shutil.rmtree(d)
+
     def test_diff_with_previous_run(self):
         import easy_report
         prev = facts()
@@ -340,6 +370,7 @@ class EasyReportTest(unittest.TestCase):
             self.assertNotIn("</script><b>", text)       # embedded data cannot break out of the script tag
             self.assertNotRegex(text, r'(src|href)="https?://')  # nothing loads from the network
             self.assertIn('"diff": {"better": [], "worse": []}', text)  # previous run was found
+            self.assertEqual(os.stat(os.path.join(cur, "report.html")).st_mode & 0o777, 0o600)
         finally:
             shutil.rmtree(out)
 
