@@ -582,7 +582,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       if (f.effort) {
         var ef = el("div", "effort");
         ef.appendChild(el("b", f.effort, f.effort === "self" ? U.e_self : U.e_help));
-        if (f.time) ef.appendChild(el("span", null, U.e_time + tx(f.time, lang)));
+        if (f.time) { var tt = tx(f.time, lang); if (lang === "en") tt = tt.charAt(0).toLowerCase() + tt.slice(1); ef.appendChild(el("span", null, U.e_time + tt)); }
         card.appendChild(ef);
       }
       var dl = el("dl");
