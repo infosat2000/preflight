@@ -25,7 +25,7 @@ jobs:
           node-version: 22
       - name: Environment
         run: |
-          echo "RISKSCAPE_HOME=$RUNNER_TEMP/riskscape-home" >> "$GITHUB_ENV"
+          echo "BB_PREFLIGHT_HOME=$RUNNER_TEMP/bb-preflight-home" >> "$GITHUB_ENV"
           sw_vers
           uname -m
           /usr/bin/python3 --version
@@ -40,13 +40,18 @@ jobs:
         run: ./run.sh
       - name: Check outputs
         run: |
-          latest="$(ls -d "$RISKSCAPE_HOME"/out/*/ | sort | tail -1)"
+          latest="$(ls -d "$BB_PREFLIGHT_HOME"/out/*/ | sort | tail -1)"
           for f in report.md ipa-checklist.csv threats.json diff.md facts.json; do
             test -s "$latest/$f" || { echo "missing $f"; exit 1; }
           done
-          test "$(stat -f %Lp "$RISKSCAPE_HOME")" = 700
+          test "$(stat -f %Lp "$BB_PREFLIGHT_HOME")" = 700
           grep -q '## 2. 前回との差分' "$latest/report.md"
           sed -n '1,40p' "$latest/report.md"
+          # 結果の要点を注記として残す（API から読めるように）
+          echo "::notice title=env::$(sw_vers -productVersion) $(uname -m) $(/usr/bin/python3 --version 2>&1) node $(node --version) crs $(git -C vendor/CyberRiskScape rev-parse --short HEAD)"
+          echo "::notice title=report::$(grep -E '^## [0-9]' "$latest/report.md" | tr '\n' ' ')"
+          echo "::notice title=facts::$(grep -m1 '待ち受け:' "$latest/report.md")"
+          echo "::notice title=diff::$(grep -E '^#' "$latest/diff.md" | head -3 | tr '\n' ' ')"
           {
             sw_vers; uname -m; /usr/bin/python3 --version; node --version
             git -C vendor/CyberRiskScape rev-parse HEAD

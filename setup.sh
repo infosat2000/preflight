@@ -3,7 +3,7 @@
 # 何度実行してもよい（取得済み・作成済みのものはそのまま残す）。
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-DATA="${RISKSCAPE_HOME:-$HOME/.riskscape}"
+DATA="${BB_PREFLIGHT_HOME:-$HOME/.bb-preflight}"
 
 # 評価エンジンの版。上げるときは両方を同時に書き換え、テストを通してから。
 CRS_REPO="https://github.com/takashi-ohmoto-git/CyberRiskScape.git"

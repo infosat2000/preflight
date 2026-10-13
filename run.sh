@@ -1,10 +1,10 @@
 #!/bin/bash
 # 実測 → 構成図 JSON 生成 → CyberRiskScape で評価 → 前回との差分、を1回で回す。
-# 個人データ（台帳・構成図・レポート）はコードの外、$RISKSCAPE_HOME（既定 ~/.riskscape）に置く。
+# 個人データ（台帳・構成図・レポート）はコードの外、$BB_PREFLIGHT_HOME（既定 ~/.bb-preflight）に置く。
 set -euo pipefail
 umask 077  # レポートは自分の弱点の地図なので、本人以外は読めないようにする
 HERE="$(cd "$(dirname "$0")" && pwd)"
-DATA="${RISKSCAPE_HOME:-$HOME/.riskscape}"
+DATA="${BB_PREFLIGHT_HOME:-$HOME/.bb-preflight}"
 CRS="${CRS_CLI:-$HERE/vendor/CyberRiskScape/dist-cli/main.js}"
 if [ -n "${PYTHON:-}" ]; then PY="$PYTHON"; elif [ -x /usr/bin/python3 ]; then PY=/usr/bin/python3; else PY=python3; fi
 INV="$DATA/inventory.json"

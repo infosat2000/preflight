@@ -1,4 +1,4 @@
-"""riskscape の単体テスト。標準ライブラリだけで動く（macOS 標準の python3 3.9 を想定）。
+"""Blackbox Blast Preflight の単体テスト。標準ライブラリだけで動く（macOS 標準の python3 3.9 を想定）。
 
 実行: python3 -m unittest discover -s tests
 CyberRiskScape の CLI があれば（vendor/ か CRS_CLI）、評価まで通す結合テストも走る。

@@ -1,4 +1,4 @@
-# 個人データ（弱点の地図）は絶対にリポジトリに入れない。既定の置き場所は ~/.riskscape
+# 個人データ（弱点の地図）は絶対にリポジトリに入れない。既定の置き場所は ~/.bb-preflight
 inventory.json
 model.json
 model.json.tmp

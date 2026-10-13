@@ -1,10 +1,24 @@
-# riskscape
+# Blackbox Blast Preflight
 
 **Mac の実測結果から脅威モデルを自動で作り、IPA の注意喚起と 221 本の脅威ルールで点検するツール**
 
 このMacで実際に待ち受けているポート、ファイアウォールの状態、公開サイトの未認証応答、AI エージェントの定期ジョブ、平文の鍵などを読み取り専用で調べ、
 その結果から [CyberRiskScape](https://github.com/takashi-ohmoto-git/CyberRiskScape)（OSS の脅威モデリングツール）の構成図を自動生成して評価します。
 前回との差分を取るので、「知らないうちに増えた入口」に気付けます。
+
+[Blackbox Blast](https://blackboxblast.com/) の点検ツールです。対象は**1人〜数人の事業者が使う Mac 1台**と、それにつながる公開サイト・外部サービスです。
+
+## 効くところ・効かないところ
+
+**効くところ**
+- **実測で、思い込みの穴が見つかる。** 作者の Mac では、手作業の点検で漏れていたファイル共有（445）・Kerberos（88）・プリンタ共有（631）の LAN 側待ち受けを見つけた。権限なしの `lsof` には出ず、`netstat` を正にした実測で分かったもの。
+- **差分で、直したことを数字で示せる。** 上の対処の後、「関連する脅威 24 件が解消・追加 0 件」と確認できた。
+- **AI エージェントの入口が見える。** claude を呼ぶ定期ジョブ、ローカル MCP、外部へ送信できるコネクタを図に入れる。
+
+**効かないところ**
+- レポート 3・4 節の脅威一覧は、CyberRiskScape のルールが構成要素の**種類**から一般論として出すもの。たとえば AI エージェント 1 つに High の脅威が十数件並ぶが、その Mac で確かめた問題ではない。件数は危険度を表さない。
+- 「問題なし」は安全の保証ではない。台帳に書いていない要素は評価されない。
+- 複数台の Mac、Windows、Linux、クラウド基盤は対象外（下の「分かっている限界」）。
 
 - 何も変更しません（プロセスの停止や設定変更はしない）。sudo も使いません。
 - 秘密情報の値はどのファイルにも書きません（見つかった鍵はファイル名と種類だけ）。
@@ -19,13 +33,13 @@
 ## はじめかた
 
 ```bash
-git clone <このリポジトリ> riskscape && cd riskscape
-./setup.sh      # CyberRiskScape v0.6.0 を取得・ビルドし、~/.riskscape/inventory.json にひな形を置く
-# ~/.riskscape/inventory.json を自分の環境に合わせて書き換える（下の「台帳の書き方」）
+git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-preflight
+./setup.sh      # CyberRiskScape v0.6.0 を取得・ビルドし、~/.bb-preflight/inventory.json にひな形を置く
+# ~/.bb-preflight/inventory.json を自分の環境に合わせて書き換える（下の「台帳の書き方」）
 ./run.sh        # 実測 → 評価 → レポート
 ```
 
-結果は `~/.riskscape/out/<日時>/` に出ます。
+結果は `~/.bb-preflight/out/<日時>/` に出ます。
 
 | ファイル | 中身 |
 |---|---|
@@ -37,14 +51,14 @@ git clone <このリポジトリ> riskscape && cd riskscape
 
 ### 個人データの置き場所
 
-台帳・構成図・レポートは**自分の弱点の地図**なので、コードとは別の `~/.riskscape/`（権限 700）に置きます。
-場所は環境変数 `RISKSCAPE_HOME` で変えられます。リポジトリの `.gitignore` でも `inventory.json`・`model.json`・`out/` を除外しています。
+台帳・構成図・レポートは**自分の弱点の地図**なので、コードとは別の `~/.bb-preflight/`（権限 700）に置きます。
+場所は環境変数 `BB_PREFLIGHT_HOME` で変えられます。リポジトリの `.gitignore` でも `inventory.json`・`model.json`・`out/` を除外しています。
 
 すでに CyberRiskScape の CLI をビルド済みなら、`CRS_CLI=/path/to/dist-cli/main.js ./setup.sh` で取得を省略できます（`run.sh` にも同じ変数を渡してください）。
 
 ## 判断の記録（リスク受容など）
 
-`~/.riskscape/model.json` を CyberRiskScape のアプリで開き、「リスク受容」などの判断を記録して同じファイルに保存します。
+`~/.bb-preflight/model.json` を CyberRiskScape のアプリで開き、「リスク受容」などの判断を記録して同じファイルに保存します。
 次に `run.sh` を回しても判断は残ります（ノード ID を実測内容から決めているため）。
 
 アプリは github.io のデモではなく、手元で起動してください。構成図を他サイトの保存領域に残さないためです。
@@ -102,6 +116,11 @@ cd vendor/CyberRiskScape && npm run build && npx vite preview --host 127.0.0.1
 - 外部サービスのログ保持・MFA の有無は台帳頼み。
 - 「問題なし」「対象なし」は、該当する要素を台帳に書いていないだけの場合がある。
 
+## 動作確認した環境
+
+- Intel Mac（作者の実機）。
+- GitHub Actions の `macos-latest`（Apple Silicon）。ひな形の台帳のまま、`setup.sh` → テスト → `run.sh` 2 回を毎回の push で通している（[.github/workflows/macos.yml](.github/workflows/macos.yml)）。
+
 ## 開発
 
 ```bash
@@ -115,3 +134,5 @@ python3 -m unittest discover -s tests
 
 Apache License 2.0。評価エンジンの CyberRiskScape（Copyright 2026 TAKASHI OMOTO、Apache 2.0）はこのリポジトリには含まず、`setup.sh` が公式リポジトリから取得します。詳しくは [NOTICE](NOTICE)。
 本ツールは CyberRiskScape プロジェクトとは関係のない独立したプロジェクトです。
+
+無保証です。Issue への対応は不定期です。
