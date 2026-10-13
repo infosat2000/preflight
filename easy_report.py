@@ -1166,6 +1166,7 @@ def main():
     if os.path.exists(model) and os.path.isdir(os.path.join(HERE, "vendor", "CyberRiskScape", "node_modules")):
         data["modelPath"] = os.path.abspath(model)
         data["engineDir"] = os.path.join(HERE, "vendor", "CyberRiskScape")
+        data["diagramCommand"] = os.path.join(HERE, "Diagram.command")
     path = os.path.join(out, "report.html")
     # 中身は自分の弱点の地図なので、run.sh の外から呼ばれても本人しか読めないようにする
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

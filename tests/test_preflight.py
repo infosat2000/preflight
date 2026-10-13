@@ -737,6 +737,36 @@ class MacChecksTest(unittest.TestCase):
             shutil.rmtree(tmp)
 
 
+class DiagramServerTest(unittest.TestCase):
+    """Diagram.command: 読み込みページと構成図を、このMacの中だけで配る。"""
+
+    def test_serves_loader_and_model(self):
+        import functools
+        import socketserver
+        import threading
+        import urllib.request
+        import diagram
+        dist = tempfile.mkdtemp()
+        try:
+            with open(os.path.join(dist, "index.html"), "w") as fp:
+                fp.write("<html>app</html>")
+            handler = functools.partial(diagram.Handler, directory=dist, model=b'{"layers": {}}')
+            srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), handler)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            base = "http://127.0.0.1:%d" % srv.server_address[1]
+            try:
+                get = lambda p: urllib.request.urlopen(base + p, timeout=5).read().decode()
+                self.assertIn('indexedDB.open("cyberriskscape"', get("/__preflight/load.html"))
+                self.assertIn("backup-", get("/__preflight/load.html"))      # work in the app is kept
+                self.assertEqual(json.loads(get("/__preflight/model.json")), {"layers": {}})
+                self.assertIn("app", get("/"))
+            finally:
+                srv.shutdown()
+                srv.server_close()
+        finally:
+            shutil.rmtree(dist)
+
+
 @unittest.skipUnless(find_cli(), "CyberRiskScape の CLI がないので結合テストは省略")
 class CliIntegrationTest(unittest.TestCase):
     """build.py の出力を本物の CyberRiskScape で評価できるか（スキーマが合っているか）を確かめる。"""

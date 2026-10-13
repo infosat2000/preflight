@@ -8,6 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DATA="${BB_PREFLIGHT_HOME:-$HOME/.bb-preflight}"
 
 # 評価エンジンの版。上げるときは両方を同時に書き換え、テストを通してから。
+# Diagram.command がブラウザ版に構成図を読み込めるかも確かめる（diagram.py の説明を参照）。
 CRS_REPO="https://github.com/takashi-ohmoto-git/CyberRiskScape.git"
 CRS_TAG="v0.6.0"
 CRS_COMMIT="71834024f8f7ad9c1bc134dfbe2ea330316dbcd6"
@@ -43,9 +44,10 @@ else
     echo "取得した CyberRiskScape のコミットが想定と違います（想定 $CRS_COMMIT / 実際 $actual）。中止します。" >&2
     exit 1
   fi
-  if [ ! -f "$DEST/dist-cli/main.js" ]; then
+  if [ ! -f "$DEST/dist-cli/main.js" ] || [ ! -f "$DEST/dist/index.html" ]; then
     # パッケージの install スクリプトは動かさない（npm のサプライチェーン攻撃は多くがここから入る）
-    (cd "$DEST" && npm ci --ignore-scripts && npm run build:cli)
+    # dist-cli は評価に、dist は構成図を開くブラウザ版（Diagram.command）に使う
+    (cd "$DEST" && { [ -d node_modules ] || npm ci --ignore-scripts; } && npm run build:cli && npm run build)
   fi
   echo "CyberRiskScape $CRS_TAG: $DEST/dist-cli/main.js"
 fi

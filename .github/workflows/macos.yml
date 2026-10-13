@@ -83,6 +83,15 @@ jobs:
           test -x "$TARGET"
           echo | "$TARGET" | tee "$RUNNER_TEMP/launcher.log"
           grep -q 'レポートを開きます' "$RUNNER_TEMP/launcher.log"
+      - name: Diagram.command serves the engine's browser app with the latest diagram
+        run: |
+          test -s vendor/CyberRiskScape/dist/index.html
+          BB_PREFLIGHT_NO_BROWSER=1 /usr/bin/python3 diagram.py > "$RUNNER_TEMP/diagram.log" 2>&1 &
+          sleep 2
+          curl -fsS http://127.0.0.1:4180/ | grep -qi '<div id="root"'
+          curl -fsS http://127.0.0.1:4180/__preflight/model.json | /usr/bin/python3 -c "import json,sys; assert json.load(sys.stdin)['layers']['L1']['nodes']"
+          curl -fsS http://127.0.0.1:4180/__preflight/load.html | grep -q cyberriskscape
+          kill %1
       - name: Check outputs
         run: |
           latest="$(ls -d "$BB_PREFLIGHT_HOME"/out/*/ | sort | tail -1)"
