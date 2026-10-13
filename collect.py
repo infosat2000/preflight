@@ -6,14 +6,18 @@
 
 使い方: python3 collect.py <inventory.json> <out/facts.json>
 """
+import base64
 import datetime
 import glob
+import hashlib
 import ipaddress
 import json
 import os
 import plistlib
 import re
+import shutil
 import socket
+import time
 import subprocess
 import sys
 
@@ -182,11 +186,282 @@ SECRET_PATTERNS = [
     ("stripe_live", r"[sr]k_live_[A-Za-z0-9]{16,}"),
     ("aws", r"AKIA[0-9A-Z]{16}"),
     ("groq", r"gsk_[A-Za-z0-9]{30,}"),
-    ("private_key", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    ("npm", r"npm_[A-Za-z0-9]{36}"),
+    # 見出しの行だけでは数えない（プログラムや説明文に書かれた見出しを鍵と見間違えないように）。
+    # 見出しの後に、鍵の本文（base64 の長い行）が続くものだけを鍵とみなす。見出しは分けて書く（このファイル自身が引っかからないように）。
+    ("private_key", r"-----BEGIN [A-Z ]*" + "PRIVATE KEY-----" + r"\r?\n(?:[A-Za-z-]+: [^\n]*\r?\n)*\r?\n?[A-Za-z0-9+/=]{40,}"),
 ]
 
 
 PLACEHOLDER = re.compile(r"x{3,}|X{3,}|your|example|dummy|\.\.\.|\*{3,}", re.I)
+
+
+def storage(fp):
+    """鍵が見つかったファイルの置き方。本人しか読めないか、Git の追跡から外れているか。"""
+    try:
+        private = os.stat(fp).st_mode & 0o077 == 0
+    except OSError:
+        private = None
+    try:
+        r = subprocess.run(["git", "-C", os.path.dirname(fp), "check-ignore", "-q", fp],
+                           capture_output=True, timeout=10)
+        # 0: 無視されている / 1: 無視されていない（追跡されうる）/ それ以外: Git の管理外
+        git_ignored = True if r.returncode == 0 else False if r.returncode == 1 else None
+    except Exception:  # noqa: BLE001
+        git_ignored = None
+    return {"private": private, "gitIgnored": git_ignored}
+
+
+GUARD_STATE = os.path.join(HOME, ".claude", "supply-chain", "state.json")
+GUARD_STALE_DAYS = 3  # supply-chain-guard 自身が「日次が止まっている」とみなす日数に合わせる
+
+
+def npm_rc_ignore_scripts(path):
+    """~/.npmrc に ignore-scripts=true があるか（npm が無いときの代わり）。"""
+    try:
+        with open(path, errors="ignore") as f:
+            for line in f:
+                k, _, v = line.partition("=")
+                if k.strip() == "ignore-scripts":
+                    return v.strip().lower() == "true"
+    except OSError:
+        return None
+    return False
+
+
+def npm_protection():
+    """npm の感染対策の状態（読むだけ。npm の設定も supply-chain-guard の結果も変えない）。
+
+    - used: npm を使っている形跡（npm コマンドか ~/.npm キャッシュ）
+    - ignoreScripts: install のときにパッケージのスクリプトを動かさない設定か
+    - guard: supply-chain-guard の最後の走査結果（入っていなければ None）
+    """
+    npm = shutil.which("npm")
+    used = bool(npm) or os.path.isdir(os.path.join(HOME, ".npm"))
+    ignore = None
+    if npm:
+        out = run([npm, "config", "get", "ignore-scripts"]).strip().lower()
+        if out in ("true", "false"):
+            ignore = out == "true"
+    if ignore is None:
+        ignore = npm_rc_ignore_scripts(os.path.join(HOME, ".npmrc"))
+    guard = None
+    try:
+        with open(GUARD_STATE, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        state = None
+    if isinstance(state, dict):
+        # 本人が「確認済み」にしたものは数えない（supply-chain-guard の finding_key と同じ作り方）
+        acked = state.get("acknowledged") or {}
+        seen, count = set(), {"high": 0, "medium": 0}
+        for key in ("last_quick", "last_full"):
+            for x in (state.get(key) or {}).get("findings", []):
+                sev, k = x.get("sev"), (x.get("sev"), x.get("msg"))
+                if k in seen or sev not in count or x.get("id") == "self":
+                    continue
+                seen.add(k)
+                fk = hashlib.sha256(("%s|%s|%s" % (sev, x.get("id"), x.get("msg"))).encode("utf-8", "replace")).hexdigest()[:16]
+                if fk not in acked:
+                    count[sev] += 1
+        at = [(state.get(k) or {}).get("at") for k in ("last_quick", "last_full")]
+        at = [a for a in at if isinstance(a, (int, float))]
+        last = max(at) if at else None
+        quick = (state.get("last_quick") or {}).get("at")
+        guard = {
+            "lastScanAt": datetime.datetime.fromtimestamp(last).isoformat(timespec="minutes") if last else "",
+            "high": count["high"],
+            "medium": count["medium"],
+            "stale": not isinstance(quick, (int, float)) or time.time() - quick > GUARD_STALE_DAYS * 86400,
+        }
+    return {"used": used, "ignoreScripts": ignore, "guard": guard}
+
+
+TOOL_DIR = os.path.dirname(os.path.realpath(__file__))
+SKIP_DIRS = ("node_modules", ".git", "dist", "dist-cli", "vendor", "vendor-CyberRiskScape", "__pycache__",
+             "venv", ".venv", "site-packages", "out", "build", "target", ".next", ".nuxt", ".cache", ".npm",
+             ".Trash", "Pods", "DerivedData", "Caches", "Photos Library.photoslibrary")
+SCAN_DEPTH = 8  # 走査範囲のフォルダから何階層下まで見るか（深い階層は依存物やキャッシュがほとんど）
+
+
+def short(p):
+    return "~" + p[len(HOME):] if p.startswith(HOME) else p
+
+
+# AI に「確認なしで何でも実行してよい」を与えてしまう許可（npm-supply-chain-guard の permission-audit と同じ考え方）
+ANY_COMMAND = re.compile(r"^Bash(\(\s*\*\s*(:\s*\*)?\s*\))?$")
+INTERPRETER = re.compile(r"^Bash\(\s*(python[0-9.]*|node|bash|sh|zsh|osascript|ruby|perl|deno|bun|npx)"
+                         r"(\s+-[A-Za-z]+)?\s*(:\s*\*|\s\*|\*)\s*\)$")
+GUARD_RULES = [re.compile(p) for p in (r"python[0-9.]*\s+-c\s*'?\s*\*", r"node\s+-e\s*'?\s*\*",
+                                       r"(bash|sh|zsh)\s+-l?c\s*'?\s*\*", r"\beval\b", r"curl[^)]*\|\s*(sh|bash)")]
+
+
+def claude_settings_files(roots):
+    """Claude Code の設定ファイル。自分全体の分と、走査範囲の中にあるプロジェクトの分。"""
+    files = [os.path.join(HOME, ".claude", n) for n in ("settings.json", "settings.local.json")]
+    for root in roots:
+        root = os.path.expanduser(root)
+        for dp, dns, fns in os.walk(root):
+            dns[:] = [d for d in dns if d not in SKIP_DIRS]
+            if os.path.basename(dp) == ".claude":
+                files += [os.path.join(dp, n) for n in ("settings.json", "settings.local.json") if n in fns]
+                dns[:] = []
+    return [f for f in dict.fromkeys(files) if os.path.isfile(f)]
+
+
+def ai_permissions(roots):
+    """Claude Code に与えている許可の広さ（読むだけ）。許可の文字列と設定ファイルの場所だけを記録する。"""
+    files = claude_settings_files(roots)
+    bypass, broad = [], []
+    for fp in files:
+        try:
+            with open(fp, encoding="utf-8") as f:
+                perm = (json.load(f) or {}).get("permissions") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        if perm.get("defaultMode") == "bypassPermissions":
+            bypass.append(short(fp))
+        for rule in perm.get("allow") or []:
+            if not isinstance(rule, str):
+                continue
+            r = rule.strip()
+            kind = "any" if ANY_COMMAND.match(r) else "code" if (INTERPRETER.match(r) or any(g.search(r) for g in GUARD_RULES)) else None
+            if kind:
+                broad.append({"file": short(fp), "rule": r, "kind": kind})
+    # MCP サーバーに、ホームフォルダ全体やディスク全体を渡していないか
+    wide = []
+    try:
+        with open(os.path.join(HOME, ".claude.json"), encoding="utf-8") as f:
+            cj = json.load(f)
+    except (OSError, ValueError):
+        cj = {}
+    servers = list(((cj.get("mcpServers") or {}).items()))
+    for v in (cj.get("projects") or {}).values():
+        servers += list(((v or {}).get("mcpServers") or {}).items())
+    for name, conf in servers:
+        args = [os.path.expanduser(str(a)).rstrip("/") or "/" for a in ((conf or {}).get("args") or [])]
+        if any(a in ("/", HOME, "/Users") for a in args) and name not in wide:
+            wide.append(name)
+    return {"files": len(files), "bypass": bypass, "broad": broad, "mcpWide": wide}
+
+
+def is_oclp():
+    """OpenCore Legacy Patcher で動いている Mac か（サポート外の古い Mac に新しい macOS を入れる仕組み）。"""
+    if any(os.path.exists(p) for p in ("/Library/Application Support/Dortania",
+                                       "/Applications/OpenCore-Patcher.app")):
+        return True
+    return "OCLP-Version" in run(["nvram", "4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102:OCLP-Version"], timeout=5)
+
+
+def is_laptop():
+    return "Book" in run(["sysctl", "-n", "hw.model"], timeout=5)
+
+
+def filevault():
+    """FileVault（ディスクの暗号化）。sudo なしの fdesetup status で読む。"""
+    out = run(["fdesetup", "status"])
+    on = True if "FileVault is On" in out else False if "FileVault is Off" in out else None
+    return {"on": on, "oclp": is_oclp(), "laptop": is_laptop()}
+
+
+def update_settings():
+    """自動で確認・入れる設定（読むだけ）。値がない項目は macOS の既定（オン）とみなす。macOS 本体の版は見ない。"""
+    def read(key):
+        out = run(["defaults", "read", "/Library/Preferences/com.apple.SoftwareUpdate", key], timeout=5).strip()
+        return None if out.startswith("ERROR") or out not in ("0", "1") else out == "1"
+    if not os.path.exists("/Library/Preferences/com.apple.SoftwareUpdate.plist"):
+        return None
+    vals = {k: read(k) for k in ("AutomaticCheckEnabled", "CriticalUpdateInstall", "ConfigDataInstall")}
+    return {"check": vals["AutomaticCheckEnabled"] is not False,
+            # 「セキュリティ対応とシステムファイルをインストール」= XProtect などの守りのデータ
+            "securityData": vals["CriticalUpdateInstall"] is not False and vals["ConfigDataInstall"] is not False,
+            "oclp": is_oclp()}
+
+
+def mac_guard():
+    """Mac に最初から入っている守り: SIP・Gatekeeper・自動ログイン。どれも sudo なしで読む。"""
+    out = run(["csrutil", "status"], timeout=5)
+    sip = "custom" if "Custom Configuration" in out else "on" if "enabled" in out else "off" if "disabled" in out else None
+    gk = run(["spctl", "--status"], timeout=5)
+    gatekeeper = True if "assessments enabled" in gk else False if "assessments disabled" in gk else None
+    # ユーザー名は記録せず、設定されているかだけを見る
+    auto = run(["defaults", "read", "/Library/Preferences/com.apple.loginwindow", "autoLoginUser"], timeout=5)
+    auto_login = bool(auto.strip()) and not auto.startswith("ERROR") and "does not exist" not in auto
+    return {"sip": sip, "gatekeeper": gatekeeper, "autoLogin": auto_login, "oclp": is_oclp()}
+
+
+def ssh_key_encrypted(fp):
+    """秘密鍵にパスフレーズが付いているか。鍵の中身は使わず、暗号方式の名前だけを読む。"""
+    try:
+        with open(fp, errors="ignore") as f:
+            text = f.read(65536)
+    except OSError:
+        return None
+    if "-----BEGIN" not in text or "PRIVATE " + "KEY-----" not in text:
+        return None
+    if "-----BEGIN OPENSSH " + "PRIVATE KEY-----" in text:
+        body = "".join(l.strip() for l in text.splitlines() if l and not l.startswith("-----"))
+        try:
+            raw = base64.b64decode(body[:200] + "=" * (-len(body[:200]) % 4))
+        except (ValueError, TypeError):
+            return None
+        magic = b"openssh-key-v1\0"
+        if not raw.startswith(magic):
+            return None
+        n = int.from_bytes(raw[len(magic):len(magic) + 4], "big")
+        cipher = raw[len(magic) + 4:len(magic) + 4 + n]
+        return cipher != b"none"
+    return "ENCRYPTED" in text or "BEGIN ENCRYPTED " + "PRIVATE KEY" in text
+
+
+def ssh_keys():
+    """~/.ssh の秘密鍵と、パスフレーズの有無。値は記録しない。"""
+    keys = []
+    d = os.path.join(HOME, ".ssh")
+    for fp in sorted(glob.glob(os.path.join(d, "*"))):
+        if fp.endswith((".pub", "known_hosts", "known_hosts.old", "config", "authorized_keys")) or not os.path.isfile(fp):
+            continue
+        enc = ssh_key_encrypted(fp)
+        if enc is not None:
+            keys.append({"file": short(fp), "encrypted": enc})
+    return keys
+
+
+# サポート詐欺などで入れさせられることが多い遠隔操作アプリ
+REMOTE_APPS = ("TeamViewer", "AnyDesk", "Splashtop", "LogMeIn", "RemotePC", "RustDesk", "ScreenConnect",
+               "ConnectWise", "Zoho Assist", "GoTo", "Supremo", "Chrome Remote Desktop", "Remote Utilities", "Ammyy")
+
+
+def remote_apps():
+    found = []
+    for d in ("/Applications", os.path.join(HOME, "Applications")):
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for n in names:
+            if n.endswith(".app") and any(n.lower().startswith(r.lower()) for r in REMOTE_APPS):
+                found.append(n[:-4])
+    return sorted(set(found))
+
+
+def time_machine():
+    """Time Machine の設定と、最後に成功したバックアップの日時。読めなければ None。"""
+    dest = run(["tmutil", "destinationinfo"])
+    if dest.startswith("ERROR") or not dest.strip():
+        return None
+    configured = "No destinations configured" not in dest
+    last = None
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})", run(["tmutil", "latestbackup"]))
+    if m:
+        last = "%s-%s-%sT%s:%s" % m.groups()[:5]
+    return {"configured": configured, "lastBackupAt": last}
+
+
+def own_dirs():
+    """鍵を探さない場所: このツールのフォルダと、点検結果を置くフォルダ。"""
+    data = os.environ.get("BB_PREFLIGHT_HOME") or os.path.join(HOME, ".bb-preflight")
+    return {TOOL_DIR, os.path.realpath(os.path.expanduser(data))}
 
 
 def secret_scan(roots):
@@ -194,11 +469,16 @@ def secret_scan(roots):
     hits = []
     rx = [(n, re.compile(p)) for n, p in SECRET_PATTERNS]
     exts = (".md", ".txt", ".json", ".yaml", ".yml", ".html", ".js", ".py", ".sh", ".toml")
+    skip = own_dirs()
     for root in roots:
         root = os.path.expanduser(root)
+        if os.path.realpath(root) in skip:
+            continue
         for dp, dns, fns in os.walk(root):
-            dns[:] = [d for d in dns if d not in ("node_modules", ".git", "dist", "dist-cli", "vendor", "vendor-CyberRiskScape", "__pycache__",
-                                          "venv", ".venv", "site-packages", "out")]
+            if dp[len(root):].count(os.sep) >= SCAN_DEPTH:
+                dns[:] = []
+            # このツール自身のフォルダと点検結果の置き場所は見ない（テスト用の偽の鍵や、過去の結果を鍵と見間違えないように）
+            dns[:] = [d for d in dns if d not in SKIP_DIRS and os.path.realpath(os.path.join(dp, d)) not in skip]
             for fn in fns:
                 if not (fn.endswith(exts) or fn.startswith(".env") or fn in (".npmrc", ".netrc", ".pypirc")
                         or fn.endswith((".token", ".plist", ".env", ".cfg", ".ini", ".conf"))):
@@ -213,22 +493,38 @@ def secret_scan(roots):
                     continue
                 kinds = sorted({n for n, r in rx for v in r.findall(s) if not PLACEHOLDER.search(v if isinstance(v, str) else "")})
                 if kinds:
-                    hits.append({"file": fp, "kinds": kinds})
+                    # ユーザー名を含むフルパスは残さない（「AI に頼む」の依頼文を Web に貼っても漏れないように）
+                    hits.append(dict({"file": short(fp), "kinds": kinds}, **storage(fp)))
     return hits
 
 
 def main():
     with open(sys.argv[1], encoding="utf-8") as f:
         inv = json.load(f)
-    facts = {
-        "measuredAt": datetime.datetime.now().isoformat(timespec="seconds"),
-        "listeners": listeners(),
-        "firewall": firewall(),
-        "lanProbe": probe_lan(inv.get("remoteAdminPorts", [])),
-        "urls": probe_urls(inv.get("endpoints", [])),
-        "agents": agents(),
-        "secrets": secret_scan(inv.get("secretScanRoots", [])),
-    }
+    roots = inv.get("secretScanRoots", [])
+    steps = [
+        ("listeners", "待ち受けているアプリ", listeners),
+        ("firewall", "ファイアウォール", firewall),
+        ("lanProbe", "LAN 側の入口", lambda: probe_lan(inv.get("remoteAdminPorts", []))),
+        ("urls", "公開しているサイト", lambda: probe_urls(inv.get("endpoints", []))),
+        ("agents", "AI の自動実行", agents),
+        ("secrets", "ファイルに書かれた鍵（いちばん時間がかかります）", lambda: secret_scan(roots)),
+        ("npm", "npm の感染対策", npm_protection),
+        ("aiPermissions", "AI に与えた権限", lambda: ai_permissions(roots)),
+        ("fileVault", "ディスクの暗号化", filevault),
+        ("sshKeys", "SSH の鍵", ssh_keys),
+        ("remoteApps", "遠隔操作アプリ", remote_apps),
+        ("timeMachine", "バックアップ", time_machine),
+        ("macGuard", "Mac の守り", mac_guard),
+        ("updates", "更新の設定", update_settings),
+    ]
+    facts = {"measuredAt": datetime.datetime.now().isoformat(timespec="seconds")}
+    started = time.time()
+    for i, (key, label, fn) in enumerate(steps, 1):
+        # 進み具合は stderr に出す（stdout の最後の1行は run.sh の結果表示に使う）
+        print("  %d/%d %sを調べています…" % (i, len(steps), label), file=sys.stderr, flush=True)
+        facts[key] = fn()
+    print("  調べ終わりました（%d 秒）" % (time.time() - started), file=sys.stderr, flush=True)
     os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
     with open(sys.argv[2], "w", encoding="utf-8") as f:
         json.dump(facts, f, ensure_ascii=False, indent=1)

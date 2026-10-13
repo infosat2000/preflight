@@ -12,6 +12,36 @@ permissions:
   contents: read
 
 jobs:
+  # 一般の人の入れ方: 評価エンジンなし。Node.js も git も使わず、macOS に入っている python3 だけで動くか
+  python-only:
+    runs-on: macos-latest
+    env:
+      PATH: /usr/bin:/bin:/usr/sbin:/sbin
+    steps:
+      - uses: actions/checkout@v4
+      - name: No Node.js on PATH
+        run: |
+          echo "BB_PREFLIGHT_HOME=$RUNNER_TEMP/bb-preflight-home" >> "$GITHUB_ENV"
+          if command -v node; then echo 'node should not be on PATH'; exit 1; fi
+          /usr/bin/python3 --version
+      - name: setup.sh (no engine)
+        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor && test ! -e "/Applications/Blackbox Blast Preflight Diagram.app" && test ! -e "$HOME/Applications/Blackbox Blast Preflight Diagram.app"
+      - name: Unit tests
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Launcher, first and second run
+        run: |
+          /usr/bin/python3 -c "import json,os;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
+          echo | ./Preflight.command | tee "$RUNNER_TEMP/l1.log"
+          grep -q 'レポートを開きます' "$RUNNER_TEMP/l1.log"
+          sleep 1
+          echo | ./Preflight.command | tee "$RUNNER_TEMP/l2.log"
+          latest="$(ls -d "$BB_PREFLIGHT_HOME"/out/*/ | sort | tail -1)"
+          for f in report.html report.md report.en.md facts.json; do test -s "$latest/$f" || { echo "missing $f"; exit 1; }; done
+          test "$(stat -f %Lp "$latest/report.html")" = 600
+          grep -q '## 2. 前回との差分' "$latest/report.md"
+          if grep -q '## 3. 参考' "$latest/report.md"; then echo 'engine section without engine'; exit 1; fi
+          echo "::notice title=python-only::$(sw_vers -productVersion) $(uname -m) $(/usr/bin/python3 --version 2>&1)"
+
   fresh-install:
     strategy:
       fail-fast: false
@@ -31,7 +61,7 @@ jobs:
           /usr/bin/python3 --version
           node --version
       - name: setup.sh (fetch and build CyberRiskScape, place example inventory)
-        run: ./setup.sh
+        run: ./setup.sh --with-engine
       - name: Unit and CLI integration tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
       - name: run.sh (first run)
@@ -42,13 +72,44 @@ jobs:
         run: |
           # ひな形のままだと台帳を開いて止まる。少し書き換えてから実測の経路を通す
           /usr/bin/python3 -c "import json,os,sys;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
-          test -x "$HOME/Applications/Blackbox Blast Preflight.command"
-          echo | "$HOME/Applications/Blackbox Blast Preflight.command" | tee "$RUNNER_TEMP/launcher.log"
+          # 管理者のユーザー（GitHub の Mac もそう）なら /Applications、そうでなければ ~/Applications に置かれる
+          apps=/Applications; [ -w /Applications ] || apps="$HOME/Applications"
+          app="$apps/Blackbox Blast Preflight.app"
+          plutil -lint "$app/Contents/Info.plist"
+          # アプリの版は VERSION ファイルと同じ
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$(tr -d '[:space:]' < VERSION)"
+          test -s "$app/Contents/Resources/AppIcon.icns"
+          test -x "$app/Contents/MacOS/launcher"
+          # 評価エンジンありの Mac には、構成図の起動ボタンも置かれる
+          dapp="$apps/Blackbox Blast Preflight Diagram.app"
+          plutil -lint "$dapp/Contents/Info.plist"
+          test -s "$dapp/Contents/Resources/AppIcon.icns"
+          grep -q 'Diagram.command' "$dapp/Contents/MacOS/launcher"
+          # .app はターミナルを開くだけなので、埋め込まれた本体の起動ファイルを直接（対話なしで）実行する
+          eval "$(grep '^TARGET=' "$app/Contents/MacOS/launcher")"
+          test -x "$TARGET"
+          echo | "$TARGET" | tee "$RUNNER_TEMP/launcher.log"
           grep -q 'レポートを開きます' "$RUNNER_TEMP/launcher.log"
+      - name: Diagram.command serves the engine's browser app with the latest diagram
+        run: |
+          test -s vendor/CyberRiskScape/dist/index.html
+          BB_PREFLIGHT_NO_BROWSER=1 /usr/bin/python3 diagram.py > "$RUNNER_TEMP/diagram.log" 2>&1 &
+          for i in $(seq 30); do grep -q 't=' "$RUNNER_TEMP/diagram.log" && break; sleep 1; done
+          cat "$RUNNER_TEMP/diagram.log"
+          # 起動ごとの合言葉は、ブラウザで開く URL にだけ載る
+          t="$(grep -o 't=[A-Za-z0-9_-]*' "$RUNNER_TEMP/diagram.log" | head -1)"
+          test -n "$t"
+          curl -fsS http://127.0.0.1:4180/ | grep -qi '<div id="root"'
+          curl -fsS "http://127.0.0.1:4180/__preflight/model.json?$t" | /usr/bin/python3 -c "import json,sys; assert json.load(sys.stdin)['layers']['L1']['nodes']"
+          curl -fsS "http://127.0.0.1:4180/__preflight/load.html?$t" | grep -q cyberriskscape
+          # 合言葉なし、または別のサイトの名前（DNS リバインディング）では断る
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4180/__preflight/model.json)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example:4180' "http://127.0.0.1:4180/__preflight/model.json?$t")" = 403
+          kill %1
       - name: Check outputs
         run: |
           latest="$(ls -d "$BB_PREFLIGHT_HOME"/out/*/ | sort | tail -1)"
-          for f in report.md ipa-checklist.csv threats.json diff.md facts.json; do
+          for f in report.html report.md ipa-checklist.csv threats.json diff.md facts.json; do
             test -s "$latest/$f" || { echo "missing $f"; exit 1; }
           done
           test "$(stat -f %Lp "$BB_PREFLIGHT_HOME")" = 700

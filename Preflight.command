@@ -4,7 +4,6 @@
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1
 DATA="${BB_PREFLIGHT_HOME:-$HOME/.bb-preflight}"
-CRS="${CRS_CLI:-$PWD/vendor/CyberRiskScape/dist-cli/main.js}"
 
 finish() {
   echo
@@ -13,8 +12,8 @@ finish() {
 }
 
 echo "== Blackbox Blast Preflight =="
-if [ ! -f "$CRS" ] || [ ! -f "$DATA/inventory.json" ]; then
-  echo "初回のセットアップをします（数分かかることがあります）。"
+if [ ! -f "$DATA/inventory.json" ]; then
+  echo "初回のセットアップをします。"
   ./setup.sh || { echo "セットアップに失敗しました。上のメッセージを確認してください。"; finish 1; }
 fi
 if cmp -s examples/inventory.example.json "$DATA/inventory.json"; then
@@ -24,14 +23,14 @@ if cmp -s examples/inventory.example.json "$DATA/inventory.json"; then
   finish 0
 fi
 
-echo "実測しています。このMacの設定は変更しません。"
+echo "実測しています。このMacの設定は変更しません。ふつうは1〜3分ほどかかります（Mac が重いときは、もっとかかります）。"
 log="$(mktemp)"
 if ./run.sh 2>&1 | tee "$log"; then
   report="$(sed -n 's/^レポート: //p' "$log" | tail -1)"
   rm -f "$log"
   if [ -n "$report" ] && [ -f "$report" ]; then
     echo "レポートを開きます: $report"
-    open "$report"
+    open "$report"  # report.html を既定のブラウザで開く
   fi
   finish 0
 else
