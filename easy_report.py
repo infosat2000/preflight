@@ -9,6 +9,7 @@
 import glob
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -54,13 +55,14 @@ CHECKS = [
     ("npm", t("npm の感染対策", "npm infection protection")),
     ("aiperm", t("AI に与えた権限", "Permissions given to AI")),
     ("guard", t("Mac の守り", "Built-in protection")),
+    ("update", t("更新の設定", "Update settings")),
     ("disk", t("ディスクの暗号化", "Disk encryption")),
     ("ssh", t("SSH の鍵", "SSH keys")),
     ("remote", t("遠隔操作アプリ", "Remote-control apps")),
     ("backup", t("バックアップ", "Backup")),
 ]
 # 実測できなかった（その Mac で読めなかった・対象がない）ときは、チェックリストに出さない項目
-OPTIONAL = {"npm", "aiperm", "guard", "disk", "ssh", "backup"}
+OPTIONAL = {"npm", "aiperm", "guard", "update", "disk", "ssh", "backup"}
 
 _SHARING_JA = "システム設定 → 一般 → 共有 → "
 _SHARING_EN = "System Settings → General → Sharing → "
@@ -480,6 +482,7 @@ def analyze(facts):
     npm_findings(facts.get("npm"), todo, good)
     more_findings(facts, todo, good)
     guard_findings(facts, todo, good)
+    update_findings(facts.get("updates"), todo, good)
 
     order = {RED: 0, YELLOW: 1}
     todo.sort(key=lambda f: order[f["level"]])
@@ -506,7 +509,7 @@ def entry_map(facts, todo):
     elif "secrets" in facts:
         mac.append(item("keys", t("鍵の置き忘れなし", "No stray keys"), GREEN))
     skip = present(facts)
-    for cat, label in ((c, l) for c, l in CHECKS if c in ("npm", "aiperm", "guard", "disk", "ssh", "backup")):
+    for cat, label in ((c, l) for c, l in CHECKS if c in ("npm", "aiperm", "guard", "update", "disk", "ssh", "backup")):
         if cat not in skip:
             mac.append(item(cat, label, lvl.get(cat, GREEN)))
     if facts.get("remoteApps"):
@@ -896,12 +899,45 @@ def guard_findings(facts, todo, good):
         good("guard", cat_text(join(ok), t("でした。", ".")))
 
 
+def update_findings(u, todo, good):
+    """守りのデータ（XProtect など）を自動で受け取る設定か。macOS 本体のアップデートは勧めない。
+    OCLP の Mac は、更新を意図して止めていることが多いので、注意にせず状態だけを伝える。"""
+    if not u:
+        return
+    if u.get("securityData"):
+        good("update", t("ウイルス対策のデータ（XProtect など）は、自動で受け取る設定です。",
+                         "Malware-protection data (such as XProtect) is set to install automatically."))
+    elif u.get("oclp"):
+        good("update", t("ウイルス対策のデータを自動で受け取る設定はオフです。OCLP の Mac では、更新を意図して止めていることがあります。"
+                         "意図したものなら、そのままで構いません。",
+                         "Automatic install of malware-protection data is off. OCLP Macs often turn updates off on purpose. "
+                         "If that was intended, you can leave it."))
+    else:
+        todo.append(finding(
+            "update", YELLOW, t("ウイルス対策のデータが自動で届きません", "Malware-protection data doesn't arrive automatically"),
+            t("「セキュリティ対応とシステムファイルをインストール」がオフです。", "Install Security Responses and system files is off."),
+            t("macOS に入っているウイルス対策（XProtect）が、新しいマルウェアを見分けるためのデータを受け取れません。",
+              "macOS's built-in malware protection (XProtect) can't get the data it needs to recognise new malware."),
+            t("システム設定 → 一般 → ソフトウェアアップデート → 自動アップデートの「i」→「セキュリティ対応とシステムファイルをインストール」をオン。",
+              "System Settings → General → Software Update → the (i) next to Automatic Updates → turn on Install Security Responses and system files."),
+            SELF, [OPEN_SETTINGS,
+                   t("左の一覧で「一般」を選び、「ソフトウェアアップデート」を開きます", "Choose General on the left, then Software Update"),
+                   t("「自動アップデート」の右の「i」を押し、「セキュリティ対応とシステムファイルをインストール」だけをオンにして「完了」を押します",
+                     "Click the (i) next to Automatic Updates, turn on only Install Security Responses and system files, and click Done"),
+                   RECHECK],
+            time=t("約1分", "About 1 min"),
+            undo=t("同じ画面で、いつでもオフに戻せます", "You can turn it off again on the same screen"),
+            keep=t("macOS 本体のアップデートとは別の設定です。これをオンにしても、macOS の版は変わりません",
+                   "This is separate from macOS upgrades. Turning it on doesn't change your macOS version")))
+
+
 def present(facts):
     """チェックリストに出す項目。実測できなかったものは出さない。"""
     has = {
         "npm": (facts.get("npm") or {}).get("used"),
         "aiperm": (facts.get("aiPermissions") or {}).get("files"),
         "guard": any(v is not None for k, v in (facts.get("macGuard") or {}).items() if k in ("sip", "gatekeeper")),
+        "update": bool(facts.get("updates")),
         "disk": (facts.get("fileVault") or {}).get("on") is not None,
         "ssh": bool(facts.get("sshKeys")),
         "backup": bool(facts.get("timeMachine")),
@@ -958,8 +994,10 @@ def changes(prev, cur):
     for x in sorted(b - a):
         n = app_name(x)
         worse.append(t("%s が外から届く状態になりました" % n["ja"], "%s can now be reached from outside" % n["en"]))
-    a = {h["file"] for h in prev.get("secrets", [])}
-    b = {h["file"] for h in cur.get("secrets", [])}
+    # 古い版はフルパス、今の版は ~/… で記録しているので、そろえて比べる
+    home = lambda p: re.sub(r"^/Users/[^/]+", "~", p)
+    a = {home(h["file"]) for h in prev.get("secrets", [])}
+    b = {home(h["file"]) for h in cur.get("secrets", [])}
     better += [t("鍵が書かれたファイルが片付きました: %s" % x, "A file with a key in it was cleaned up: %s" % x)
                for x in sorted(a - b)]
     worse += [t("鍵が書かれたファイルが増えました: %s" % x, "A new file with a key in it was found: %s" % x)

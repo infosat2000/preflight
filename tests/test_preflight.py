@@ -53,6 +53,7 @@ def risky_mac(f):
     f["remoteApps"] = ["AnyDesk"]
     f["timeMachine"] = {"configured": True, "lastBackupAt": "2026-08-01T09:00"}
     f["macGuard"] = {"sip": "off", "gatekeeper": False, "autoLogin": True, "oclp": False}
+    f["updates"] = {"check": False, "securityData": False, "oclp": False}
     return f
 
 
@@ -114,6 +115,22 @@ class SecretScanTest(unittest.TestCase):
         self.assertEqual([{k: h[k] for k in ("file", "kinds")} for h in hits], [{"file": p, "kinds": ["anthropic"]}])
         self.assertEqual(set(hits[0]), {"file", "kinds", "private", "gitIgnored"})  # never the value
         self.assertNotIn(key, json.dumps(hits))
+
+    def test_home_is_shortened_and_depth_is_limited(self):
+        key = "sk-" + "ant-" + "a1B2c3D4e5F6g7H8i9J0kLmNoPq"
+        self.write("app/.env", "ANTHROPIC_API_KEY=%s\n" % key)
+        self.write("/".join("d%d" % i for i in range(collect.SCAN_DEPTH + 1)) + "/.env", "K=%s\n" % key)
+        old = collect.HOME
+        collect.HOME = self.root
+        try:
+            hits = collect.secret_scan([self.root])
+        finally:
+            collect.HOME = old
+        self.assertEqual([h["file"] for h in hits], ["~/app/.env"])     # too-deep file skipped, no user name
+        import easy_report
+        prev = {"secrets": [{"file": "/Users/someone/app/.env"}]}
+        self.assertEqual(easy_report.changes(prev, {"secrets": [{"file": "~/app/.env"}]}),
+                         {"better": [], "worse": []})                  # older full paths still match
 
     def test_npm_token(self):
         tok = "npm" + "_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
@@ -437,13 +454,14 @@ class EasyReportTest(unittest.TestCase):
         # file paths and app names come from the data and are not translated
         data_bits = [h["file"] for h in cur["secrets"] + prev["secrets"]]
         data_bits += [l["process"] for l in cur["listeners"]] + cur["agents"]["claude_launchd_jobs"]
-        self.assertEqual({x["cat"] for x in d["todo"]} >= {"aiperm", "disk", "ssh", "remote", "backup", "guard"}, True)
+        self.assertEqual({x["cat"] for x in d["todo"]} >= {"aiperm", "disk", "ssh", "remote", "backup", "guard", "update"}, True)
         good = copy.deepcopy(cur)
         good.update(aiPermissions={"files": 1, "bypass": [], "broad": [], "mcpWide": []},
                     fileVault={"on": True, "oclp": False, "laptop": True}, remoteApps=[],
                     sshKeys=[{"file": "~/.ssh/id_ed25519", "encrypted": True}],
                     timeMachine={"configured": True, "lastBackupAt": cur["measuredAt"][:16]},
-                    macGuard={"sip": "custom", "gatekeeper": True, "autoLogin": False, "oclp": True})
+                    macGuard={"sip": "custom", "gatekeeper": True, "autoLogin": False, "oclp": True},
+                    updates={"check": True, "securityData": False, "oclp": True})
         texts += [o["text"] for o in easy_report.build_data(good)["ok"]]
         for x in texts:
             self.assertEqual(set(x), {"ja", "en"})
@@ -611,7 +629,8 @@ class MacChecksTest(unittest.TestCase):
         self.assertEqual(self.levels(f, "remote"), ["yellow"])
         self.assertEqual(self.levels(f, "backup"), ["red"])               # over 30 days
         self.assertEqual(sorted(self.levels(f, "guard")), ["red", "red", "yellow"])
-        self.assertEqual(len(d["checks"]), 12)                            # every check except npm (not used here)
+        self.assertEqual(self.levels(f, "update"), ["yellow"])
+        self.assertEqual(len(d["checks"]), 13)                            # every check except npm (not used here)
         import datetime
         at = datetime.datetime.fromisoformat(f["measuredAt"][:16])
         f["timeMachine"]["lastBackupAt"] = (at - datetime.timedelta(days=10)).isoformat()[:16]
@@ -634,6 +653,10 @@ class MacChecksTest(unittest.TestCase):
         self.assertIn("Don't suggest a macOS update", disk["askAi"]["en"])
         f["macGuard"]["sip"] = "off"
         self.assertEqual(self.levels(f, "guard"), ["yellow"])
+        f["updates"]["oclp"] = True
+        self.assertEqual(self.levels(f, "update"), [])                    # OCLP: told, never pushed to update
+        texts = json.dumps(easy_report.build_data(f), ensure_ascii=False)
+        self.assertNotIn("アップデートしましょう", texts)
 
     def test_unmeasured_checks_are_hidden(self):
         import easy_report
@@ -642,7 +665,7 @@ class MacChecksTest(unittest.TestCase):
                  fileVault={"on": None, "oclp": False, "laptop": False}, sshKeys=[], timeMachine=None,
                  macGuard={"sip": None, "gatekeeper": None, "autoLogin": False, "oclp": False})
         cats = [c["cat"] for c in easy_report.build_data(f)["checks"]]
-        for c in ("aiperm", "disk", "ssh", "backup", "guard", "remote"):
+        for c in ("aiperm", "disk", "ssh", "backup", "guard", "remote", "update"):
             self.assertNotIn(c, cats)
 
     def test_ai_permissions_reads_rules_only(self):

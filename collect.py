@@ -276,7 +276,9 @@ def npm_protection():
 
 
 SKIP_DIRS = ("node_modules", ".git", "dist", "dist-cli", "vendor", "vendor-CyberRiskScape", "__pycache__",
-             "venv", ".venv", "site-packages", "out")
+             "venv", ".venv", "site-packages", "out", "build", "target", ".next", ".nuxt", ".cache", ".npm",
+             ".Trash", "Pods", "DerivedData", "Caches", "Photos Library.photoslibrary")
+SCAN_DEPTH = 8  # 走査範囲のフォルダから何階層下まで見るか（深い階層は依存物やキャッシュがほとんど）
 
 
 def short(p):
@@ -357,6 +359,20 @@ def filevault():
     out = run(["fdesetup", "status"])
     on = True if "FileVault is On" in out else False if "FileVault is Off" in out else None
     return {"on": on, "oclp": is_oclp(), "laptop": is_laptop()}
+
+
+def update_settings():
+    """自動で確認・入れる設定（読むだけ）。値がない項目は macOS の既定（オン）とみなす。macOS 本体の版は見ない。"""
+    def read(key):
+        out = run(["defaults", "read", "/Library/Preferences/com.apple.SoftwareUpdate", key], timeout=5).strip()
+        return None if out.startswith("ERROR") or out not in ("0", "1") else out == "1"
+    if not os.path.exists("/Library/Preferences/com.apple.SoftwareUpdate.plist"):
+        return None
+    vals = {k: read(k) for k in ("AutomaticCheckEnabled", "CriticalUpdateInstall", "ConfigDataInstall")}
+    return {"check": vals["AutomaticCheckEnabled"] is not False,
+            # 「セキュリティ対応とシステムファイルをインストール」= XProtect などの守りのデータ
+            "securityData": vals["CriticalUpdateInstall"] is not False and vals["ConfigDataInstall"] is not False,
+            "oclp": is_oclp()}
 
 
 def mac_guard():
@@ -447,6 +463,8 @@ def secret_scan(roots):
     for root in roots:
         root = os.path.expanduser(root)
         for dp, dns, fns in os.walk(root):
+            if dp[len(root):].count(os.sep) >= SCAN_DEPTH:
+                dns[:] = []
             dns[:] = [d for d in dns if d not in SKIP_DIRS]
             for fn in fns:
                 if not (fn.endswith(exts) or fn.startswith(".env") or fn in (".npmrc", ".netrc", ".pypirc")
@@ -462,29 +480,38 @@ def secret_scan(roots):
                     continue
                 kinds = sorted({n for n, r in rx for v in r.findall(s) if not PLACEHOLDER.search(v if isinstance(v, str) else "")})
                 if kinds:
-                    hits.append(dict({"file": fp, "kinds": kinds}, **storage(fp)))
+                    # ユーザー名を含むフルパスは残さない（「AI に頼む」の依頼文を Web に貼っても漏れないように）
+                    hits.append(dict({"file": short(fp), "kinds": kinds}, **storage(fp)))
     return hits
 
 
 def main():
     with open(sys.argv[1], encoding="utf-8") as f:
         inv = json.load(f)
-    facts = {
-        "measuredAt": datetime.datetime.now().isoformat(timespec="seconds"),
-        "listeners": listeners(),
-        "firewall": firewall(),
-        "lanProbe": probe_lan(inv.get("remoteAdminPorts", [])),
-        "urls": probe_urls(inv.get("endpoints", [])),
-        "agents": agents(),
-        "secrets": secret_scan(inv.get("secretScanRoots", [])),
-        "npm": npm_protection(),
-        "aiPermissions": ai_permissions(inv.get("secretScanRoots", [])),
-        "fileVault": filevault(),
-        "sshKeys": ssh_keys(),
-        "remoteApps": remote_apps(),
-        "timeMachine": time_machine(),
-        "macGuard": mac_guard(),
-    }
+    roots = inv.get("secretScanRoots", [])
+    steps = [
+        ("listeners", "待ち受けているアプリ", listeners),
+        ("firewall", "ファイアウォール", firewall),
+        ("lanProbe", "LAN 側の入口", lambda: probe_lan(inv.get("remoteAdminPorts", []))),
+        ("urls", "公開しているサイト", lambda: probe_urls(inv.get("endpoints", []))),
+        ("agents", "AI の自動実行", agents),
+        ("secrets", "ファイルに書かれた鍵（いちばん時間がかかります）", lambda: secret_scan(roots)),
+        ("npm", "npm の感染対策", npm_protection),
+        ("aiPermissions", "AI に与えた権限", lambda: ai_permissions(roots)),
+        ("fileVault", "ディスクの暗号化", filevault),
+        ("sshKeys", "SSH の鍵", ssh_keys),
+        ("remoteApps", "遠隔操作アプリ", remote_apps),
+        ("timeMachine", "バックアップ", time_machine),
+        ("macGuard", "Mac の守り", mac_guard),
+        ("updates", "更新の設定", update_settings),
+    ]
+    facts = {"measuredAt": datetime.datetime.now().isoformat(timespec="seconds")}
+    started = time.time()
+    for i, (key, label, fn) in enumerate(steps, 1):
+        # 進み具合は stderr に出す（stdout の最後の1行は run.sh の結果表示に使う）
+        print("  %d/%d %sを調べています…" % (i, len(steps), label), file=sys.stderr, flush=True)
+        facts[key] = fn()
+    print("  調べ終わりました（%d 秒）" % (time.time() - started), file=sys.stderr, flush=True)
     os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
     with open(sys.argv[2], "w", encoding="utf-8") as f:
         json.dump(facts, f, ensure_ascii=False, indent=1)

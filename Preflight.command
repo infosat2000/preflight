@@ -23,7 +23,7 @@ if cmp -s examples/inventory.example.json "$DATA/inventory.json"; then
   finish 0
 fi
 
-echo "実測しています。このMacの設定は変更しません。"
+echo "実測しています。このMacの設定は変更しません。ふつうは1〜3分ほどかかります（Mac が重いときは、もっとかかります）。"
 log="$(mktemp)"
 if ./run.sh 2>&1 | tee "$log"; then
   report="$(sed -n 's/^レポート: //p' "$log" | tail -1)"
