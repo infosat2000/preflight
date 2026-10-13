@@ -8,12 +8,15 @@
 """
 import datetime
 import glob
+import hashlib
 import ipaddress
 import json
 import os
 import plistlib
 import re
+import shutil
 import socket
+import time
 import subprocess
 import sys
 
@@ -182,6 +185,7 @@ SECRET_PATTERNS = [
     ("stripe_live", r"[sr]k_live_[A-Za-z0-9]{16,}"),
     ("aws", r"AKIA[0-9A-Z]{16}"),
     ("groq", r"gsk_[A-Za-z0-9]{30,}"),
+    ("npm", r"npm_[A-Za-z0-9]{36}"),
     ("private_key", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
 ]
 
@@ -203,6 +207,71 @@ def storage(fp):
     except Exception:  # noqa: BLE001
         git_ignored = None
     return {"private": private, "gitIgnored": git_ignored}
+
+
+GUARD_STATE = os.path.join(HOME, ".claude", "supply-chain", "state.json")
+GUARD_STALE_DAYS = 3  # supply-chain-guard 自身が「日次が止まっている」とみなす日数に合わせる
+
+
+def npm_rc_ignore_scripts(path):
+    """~/.npmrc に ignore-scripts=true があるか（npm が無いときの代わり）。"""
+    try:
+        with open(path, errors="ignore") as f:
+            for line in f:
+                k, _, v = line.partition("=")
+                if k.strip() == "ignore-scripts":
+                    return v.strip().lower() == "true"
+    except OSError:
+        return None
+    return False
+
+
+def npm_protection():
+    """npm の感染対策の状態（読むだけ。npm の設定も supply-chain-guard の結果も変えない）。
+
+    - used: npm を使っている形跡（npm コマンドか ~/.npm キャッシュ）
+    - ignoreScripts: install のときにパッケージのスクリプトを動かさない設定か
+    - guard: supply-chain-guard の最後の走査結果（入っていなければ None）
+    """
+    npm = shutil.which("npm")
+    used = bool(npm) or os.path.isdir(os.path.join(HOME, ".npm"))
+    ignore = None
+    if npm:
+        out = run([npm, "config", "get", "ignore-scripts"]).strip().lower()
+        if out in ("true", "false"):
+            ignore = out == "true"
+    if ignore is None:
+        ignore = npm_rc_ignore_scripts(os.path.join(HOME, ".npmrc"))
+    guard = None
+    try:
+        with open(GUARD_STATE, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        state = None
+    if isinstance(state, dict):
+        # 本人が「確認済み」にしたものは数えない（supply-chain-guard の finding_key と同じ作り方）
+        acked = state.get("acknowledged") or {}
+        seen, count = set(), {"high": 0, "medium": 0}
+        for key in ("last_quick", "last_full"):
+            for x in (state.get(key) or {}).get("findings", []):
+                sev, k = x.get("sev"), (x.get("sev"), x.get("msg"))
+                if k in seen or sev not in count or x.get("id") == "self":
+                    continue
+                seen.add(k)
+                fk = hashlib.sha256(("%s|%s|%s" % (sev, x.get("id"), x.get("msg"))).encode("utf-8", "replace")).hexdigest()[:16]
+                if fk not in acked:
+                    count[sev] += 1
+        at = [(state.get(k) or {}).get("at") for k in ("last_quick", "last_full")]
+        at = [a for a in at if isinstance(a, (int, float))]
+        last = max(at) if at else None
+        quick = (state.get("last_quick") or {}).get("at")
+        guard = {
+            "lastScanAt": datetime.datetime.fromtimestamp(last).isoformat(timespec="minutes") if last else "",
+            "high": count["high"],
+            "medium": count["medium"],
+            "stale": not isinstance(quick, (int, float)) or time.time() - quick > GUARD_STALE_DAYS * 86400,
+        }
+    return {"used": used, "ignoreScripts": ignore, "guard": guard}
 
 
 def secret_scan(roots):
@@ -244,6 +313,7 @@ def main():
         "urls": probe_urls(inv.get("endpoints", [])),
         "agents": agents(),
         "secrets": secret_scan(inv.get("secretScanRoots", [])),
+        "npm": npm_protection(),
     }
     os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
     with open(sys.argv[2], "w", encoding="utf-8") as f:

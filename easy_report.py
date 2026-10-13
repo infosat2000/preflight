@@ -51,6 +51,7 @@ CHECKS = [
     ("sites", t("公開しているサイト", "Your public websites")),
     ("keys", t("API キーなどの鍵", "API keys and other secrets")),
     ("ai", t("AI の自動実行", "AI running on its own")),
+    ("npm", t("npm の感染対策", "npm infection protection")),
 ]
 
 _SHARING_JA = "システム設定 → 一般 → 共有 → "
@@ -107,6 +108,7 @@ SECRET_KINDS = {
     "stripe_live": t("Stripe の本番キー", "Stripe live key"),
     "aws": t("AWS のアクセスキー", "AWS access key"),
     "groq": t("Groq の API キー", "Groq API key"),
+    "npm": t("npm の公開用トークン", "npm publish token"),
     "private_key": t("秘密鍵", "private key"),
 }
 
@@ -467,6 +469,8 @@ def analyze(facts):
         good("ai", t("AI を自動で呼び出す仕組みは、見つかりませんでした。",
                      "Nothing was found that starts AI on its own."))
 
+    npm_findings(facts.get("npm"), todo, good)
+
     order = {RED: 0, YELLOW: 1}
     todo.sort(key=lambda f: order[f["level"]])
     return todo, ok
@@ -491,6 +495,8 @@ def entry_map(facts, todo):
             len(secrets), "" if len(secrets) == 1 else "s")), lvl.get("keys", YELLOW)))
     elif "secrets" in facts:
         mac.append(item("keys", t("鍵の置き忘れなし", "No stray keys"), GREEN))
+    if (facts.get("npm") or {}).get("used"):
+        mac.append(item("npm", t("npm の感染対策", "npm infection protection"), lvl.get("npm", GREEN)))
 
     for p in open_admin_ports(facts):
         lan.append(item("ports", port_info(p)[0], RED))
@@ -528,10 +534,95 @@ def entry_map(facts, todo):
     return {"firewall": bool(facts.get("firewall", {}).get("enabled")), "mac": mac, "lan": lan, "net": net}
 
 
-def checks(todo):
+GUARD_CMD = "python3 ~/.claude/supply-chain/scan.py --status"
+
+
+def npm_findings(n, todo, good):
+    """npm のサプライチェーン攻撃（パッケージに仕込まれたワームなど）への備え。npm を使っていなければ何も出さない。"""
+    if not n or not n.get("used"):
+        return
+    g = n.get("guard")
+    if g and (g.get("high") or g.get("medium")):
+        hi, n_all = g.get("high", 0), g.get("high", 0) + g.get("medium", 0)
+        todo.append(finding(
+            "npm", RED if hi else YELLOW,
+            t("npm の感染の疑いが %d 件出ています" % hi, "%d possible npm infection%s reported" % (hi, "" if hi == 1 else "s")) if hi else
+            t("npm の見張りが、確認してほしいものを %d 件出しています" % n_all,
+              "npm monitoring has %d item%s for you to check" % (n_all, "" if n_all == 1 else "s")),
+            t("感染を見張る supply-chain-guard が、最後の走査（%s）で、まだ確認していないものを見つけています（重大 %d 件・注意 %d 件）。" % (
+                g["lastScanAt"].replace("T", " "), hi, n_all - hi),
+              "supply-chain-guard, which watches for infections, found items you haven't checked yet in its last scan (%s): "
+              "%d serious, %d to check." % (g["lastScanAt"].replace("T", " "), hi, n_all - hi)),
+            t("感染したパッケージは、このMacの鍵（GitHub・npm・クラウドなど）を盗んで外へ送り、ほかのプロジェクトにも広がることがあります。",
+              "An infected package can steal keys on this Mac (GitHub, npm, cloud and so on), send them out, and spread to other projects."),
+            t("ターミナルで %s を実行して内容を確かめ、supply-chain-guard の取扱説明書（MANUAL.md）の「警告が出たとき」に沿って対処します。" % GUARD_CMD,
+              "Run %s in Terminal to see the details, then follow \"When a warning appears\" in the supply-chain-guard manual (MANUAL.md)." % GUARD_CMD),
+            time=t("30分〜", "30 min or more"),
+            ask_ai=t("このMacで supply-chain-guard が npm の感染の疑いを出しています。%s を実行して結果を読み、"
+                     "何が見つかったのか、本当に危ないのかを、ふつうの言葉で説明してください。鍵や設定ファイルの中身は画面に出さず、"
+                     "削除や作り直しなど元に戻せない操作は、私に確かめてから行ってください。" % GUARD_CMD,
+                     "supply-chain-guard on this Mac reports a possible npm infection. Run %s, read the result, and explain in plain words "
+                     "what was found and whether it is really dangerous. Don't show keys or the contents of settings files, and ask me "
+                     "before doing anything that can't be undone, like deleting files or replacing keys." % GUARD_CMD)))
+        return
+    if g and g.get("stale"):
+        todo.append(finding(
+            "npm", YELLOW, t("npm の感染の見張りが止まっています", "npm infection monitoring has stopped"),
+            t("supply-chain-guard は入っていますが、毎日の走査がしばらく動いていません（最後の走査: %s）。" % (
+                g.get("lastScanAt", "").replace("T", " ") or "なし"),
+              "supply-chain-guard is installed, but its daily scan hasn't run for a while (last scan: %s)." % (
+                g.get("lastScanAt", "").replace("T", " ") or "none")),
+            t("見張りが止まっている間に感染したパッケージが入っても、気づけません。",
+              "If an infected package arrives while monitoring is stopped, you won't notice."),
+            t("ターミナルで python3 ~/.claude/supply-chain/scan.py --quick を実行し、そのあと %s で日時が新しくなったか確かめます。"
+              "直らなければ、supply-chain-guard の install.sh をもう一度実行します。" % GUARD_CMD,
+              "Run python3 ~/.claude/supply-chain/scan.py --quick in Terminal, then check with %s that the date is new. "
+              "If it doesn't help, run supply-chain-guard's install.sh again." % GUARD_CMD),
+            SELF, time=t("約5分", "About 5 min")))
+        return
+    if g:
+        good("npm", t("npm の感染の見張り（supply-chain-guard）は動いていて、最後の走査（%s）で異常はありませんでした。" % (
+            g.get("lastScanAt", "").replace("T", " ")),
+                      "npm infection monitoring (supply-chain-guard) is running, and its last scan (%s) found nothing." % (
+            g.get("lastScanAt", "").replace("T", " "))))
+        return
+    if n.get("ignoreScripts"):
+        good("npm", t("npm は、パッケージを入れるときにその中のプログラムを自動で動かさない設定です（感染の主な入口が閉じています）。",
+                      "npm is set not to run programs inside packages when installing them (the main way infections get in is closed)."))
+        return
+    todo.append(finding(
+        "npm", YELLOW, t("npm の感染対策が入っていません", "No protection against npm infections"),
+        t("このMacでは npm を使っていますが、パッケージを入れるときに、その中のプログラムが自動で動く設定のままです。",
+          "This Mac uses npm, and it still runs programs inside packages automatically when installing them."),
+        t("乗っ取られたパッケージを1つ入れただけで、このMacの鍵（GitHub・npm・クラウドなど）を盗まれることがあります。"
+          "AI に開発を任せていると、知らないうちにパッケージが入ることもあります。",
+          "Installing just one hijacked package can let someone steal keys on this Mac (GitHub, npm, cloud and so on). "
+          "When an AI does your coding, packages can be installed without you noticing."),
+        t("ターミナルで npm config set ignore-scripts true を実行します。",
+          "Run npm config set ignore-scripts true in Terminal."),
+        SELF, [t("「アプリケーション」→「ユーティリティ」から「ターミナル」を開きます",
+                 "Open Terminal from Applications → Utilities"),
+               t("npm config set ignore-scripts true と入力して return を押します",
+                 "Type npm config set ignore-scripts true and press return"),
+               RECHECK],
+        time=t("約1分", "About 1 min"),
+        undo=t("npm config delete ignore-scripts で元に戻ります", "Run npm config delete ignore-scripts to undo it"),
+        keep=t("入れたあとに動かなくなるパッケージがあれば、そのプロジェクトで npm rebuild --ignore-scripts=false パッケージ名 を実行します。"
+               "感染を毎日見張るなら、supply-chain-guard を入れるとより安心です",
+               "If a package stops working after you install it, run npm rebuild --ignore-scripts=false <package> in that project. "
+               "To watch for infections every day, installing supply-chain-guard is safer still"),
+        ask_ai=t("このMacの npm で、パッケージの install スクリプトを動かさない設定（ignore-scripts=true）にしたいです。"
+                 "設定したあと、今のプロジェクトがビルドできるか確かめ、スクリプトが必要なパッケージがあれば、そのパッケージだけ動かす方法を教えてください。",
+                 "I want npm on this Mac to stop running package install scripts (ignore-scripts=true). After setting it, check that my "
+                 "current projects still build, and if a package needs its scripts, show me how to run them for that package only.")))
+
+
+def checks(todo, skip=()):
     """6つの項目それぞれの信号（いちばん悪いもの）。"""
     res = []
     for cat, label in CHECKS:
+        if cat in skip:
+            continue
         levels = {f["level"] for f in todo if f["cat"] == cat}
         res.append({"cat": cat, "label": label,
                     "level": RED if RED in levels else YELLOW if YELLOW in levels else GREEN})
@@ -595,7 +686,7 @@ def build_data(facts, prev=None, detail=""):
         "measuredAt": facts.get("measuredAt", "").replace("T", " "),
         "verdict": RED if reds else YELLOW if todo else GREEN,
         "counts": {"red": reds, "yellow": len(todo) - reds, "ok": len(ok)},
-        "checks": checks(todo),
+        "checks": checks(todo, () if (facts.get("npm") or {}).get("used") else ("npm",)),
         "map": entry_map(facts, todo),
         "todo": todo,
         "ok": ok,

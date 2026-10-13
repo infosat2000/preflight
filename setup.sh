@@ -30,7 +30,8 @@ else
     exit 1
   fi
   if [ ! -f "$DEST/dist-cli/main.js" ]; then
-    (cd "$DEST" && npm ci && npm run build:cli)
+    # パッケージの install スクリプトは動かさない（npm のサプライチェーン攻撃は多くがここから入る）
+    (cd "$DEST" && npm ci --ignore-scripts && npm run build:cli)
   fi
   echo "CyberRiskScape $CRS_TAG: $DEST/dist-cli/main.js"
 fi

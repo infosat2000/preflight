@@ -87,6 +87,16 @@ def build(out, lang):
     L.append(T("- AIエージェント: ローカル MCP %s / claude を呼ぶ定期ジョブ %d 本（%s。別のスクリプトを挟む多段呼び出しは未計上）",
                "- AI agents: local MCP %s / scheduled jobs that call claude: %d (%s; calls through another script are not counted)") % (
         ", ".join(ag["local_mcp_servers"]) or none, len(ag["claude_launchd_jobs"]), ", ".join(ag["claude_launchd_jobs"]) or none))
+    n = facts.get("npm")
+    if n and n.get("used"):
+        g = n.get("guard")
+        L.append(T("- npm: ignore-scripts %s / supply-chain-guard %s",
+                   "- npm: ignore-scripts %s / supply-chain-guard %s") % (
+            {True: "true", False: "false"}.get(n.get("ignoreScripts"), T("不明", "unknown")),
+            T("未導入", "not installed") if not g else T("最後の走査 %s・未確認 重大 %d 件・注意 %d 件%s",
+                                                     "last scan %s, unchecked: %d serious, %d to check%s") % (
+                g.get("lastScanAt", "").replace("T", " ") or "-", g.get("high", 0), g.get("medium", 0),
+                T("・日次が止まっている", ", daily scan stopped") if g.get("stale") else "")))
     L.append("")
 
     L.append(T("## 2. 前回との差分", "## 2. Changes since the last run"))

@@ -101,6 +101,11 @@ class SecretScanTest(unittest.TestCase):
         self.assertEqual(set(hits[0]), {"file", "kinds", "private", "gitIgnored"})  # never the value
         self.assertNotIn(key, json.dumps(hits))
 
+    def test_npm_token(self):
+        tok = "npm" + "_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        self.write(".npmrc", "//registry.npmjs.org/:_authToken=%s\n" % tok)
+        self.assertEqual([h["kinds"] for h in collect.secret_scan([self.root])], [["npm"]])
+
     def test_ignores_placeholders_and_skipped_dirs(self):
         self.write("app/.env.example", "KEY=sk-" + "ant-xxxxxxxxxxxxxxxxxxxxxxxxxx\n")
         self.write("app/README.md", "KEY=sk-" + "ant-your-key-goes-here-0000000000\n")
@@ -368,6 +373,7 @@ class EasyReportTest(unittest.TestCase):
         cur["lanProbe"] = [dict(x, open=not x["open"]) for x in cur["lanProbe"]]
         cur["listeners"].append({"process": "rapportd", "pid": "9", "addr": "*:1", "port": 1, "scope": "all"})
         cur["secrets"].append({"file": "/Users/someone/b.py", "kinds": ["github"], "private": False})
+        cur["npm"] = {"used": True, "ignoreScripts": False, "guard": None}
         d = easy_report.build_data(cur, prev)
         texts = [x["label"] for x in d["checks"]] + [o["text"] for o in d["ok"]]
         for x in d["todo"]:
@@ -389,6 +395,67 @@ class EasyReportTest(unittest.TestCase):
             for bit in data_bits:
                 en = en.replace(bit, "")
             self.assertNotRegex(en, jp, x["en"])
+
+    def test_npm_protection(self):
+        import easy_report
+
+        def run(npm):
+            f = facts()
+            f["npm"] = npm
+            d = easy_report.build_data(f)
+            todo = [x for x in d["todo"] if x["cat"] == "npm"]
+            ok = [x for x in d["ok"] if x["cat"] == "npm"]
+            return d, todo, ok
+        d, todo, ok = run({"used": False, "ignoreScripts": False, "guard": None})
+        self.assertFalse(todo or ok)
+        self.assertNotIn("npm", [c["cat"] for c in d["checks"]])   # no npm, no checklist item
+        _, todo, _ = run({"used": True, "ignoreScripts": False, "guard": None})
+        self.assertEqual([x["level"] for x in todo], ["yellow"])
+        self.assertIn("npm config set ignore-scripts true", todo[0]["how"]["en"])
+        _, todo, ok = run({"used": True, "ignoreScripts": True, "guard": None})
+        self.assertFalse(todo); self.assertTrue(ok)
+        guard = {"lastScanAt": "2026-10-13T08:00", "high": 0, "medium": 0, "stale": False}
+        _, todo, ok = run({"used": True, "ignoreScripts": False, "guard": guard})
+        self.assertFalse(todo); self.assertTrue(ok)               # the guard counts as protection
+        _, todo, _ = run({"used": True, "ignoreScripts": True, "guard": dict(guard, stale=True)})
+        self.assertEqual([x["level"] for x in todo], ["yellow"])
+        d, todo, _ = run({"used": True, "ignoreScripts": True, "guard": dict(guard, high=2)})
+        self.assertEqual([x["level"] for x in todo], ["red"])
+        self.assertEqual(d["verdict"], "red")
+        _, todo, _ = run({"used": True, "ignoreScripts": True, "guard": dict(guard, medium=1)})
+        self.assertEqual([x["level"] for x in todo], ["yellow"])
+
+    def test_npm_state_is_read_not_written(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            state = os.path.join(tmp, "state.json")
+            with open(state, "w", encoding="utf-8") as fp:
+                import hashlib
+                acked = hashlib.sha256(b"medium|drift|seen").hexdigest()[:16]
+                json.dump({"last_quick": {"at": 1e10, "findings": [
+                    {"sev": "high", "id": "ioc", "msg": "x"}, {"sev": "info", "id": "self", "msg": "y"},
+                    {"sev": "medium", "id": "drift", "msg": "seen"}]},
+                    "last_full": {"at": 1e10, "findings": [{"sev": "high", "id": "ioc", "msg": "x"}]},
+                    "acknowledged": {acked: {"sev": "medium"}}}, fp)
+            with open(state, encoding="utf-8") as fp:
+                before = fp.read()
+            rc = os.path.join(tmp, "npmrc")
+            with open(rc, "w") as fp:
+                fp.write("fund=false\nignore-scripts = true\n")
+            old = collect.GUARD_STATE
+            collect.GUARD_STATE = state
+            try:
+                g = collect.npm_protection()["guard"]
+            finally:
+                collect.GUARD_STATE = old
+            self.assertEqual((g["high"], g["medium"]), (1, 0))    # counted once; acknowledged ones are skipped
+            self.assertFalse(g["stale"])
+            with open(state, encoding="utf-8") as fp:
+                self.assertEqual(fp.read(), before)
+            self.assertTrue(collect.npm_rc_ignore_scripts(rc))
+            self.assertIsNone(collect.npm_rc_ignore_scripts(os.path.join(tmp, "missing")))
+        finally:
+            shutil.rmtree(tmp)
 
     def test_entry_map_places_each_way_in(self):
         import easy_report
