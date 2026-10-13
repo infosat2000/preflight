@@ -45,7 +45,7 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 結果は `~/.bb-preflight/out/<日時>/` に出ます。
 
 ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。`setup.sh` はアイコン付きの起動ボタン `~/Applications/Blackbox Blast Preflight.app` も置くので、Finder の「アプリケーション」・Launchpad・Spotlight からも開けます（置きたくない場合は `BB_PREFLIGHT_NO_SHORTCUT=1 ./setup.sh`）。Dock に入れておくと便利です。リポジトリのフォルダを移したら `setup.sh` をもう一度実行してください。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
-（ZIP でダウンロードした場合は macOS に止められることがあります。そのときは右クリック →「開く」で一度だけ許可してください。`git clone` で取得した場合は止められません。）
+（ZIP でダウンロードした場合は macOS に止められることがあります。そのときは一度開こうとしたあと、システム設定 →「プライバシーとセキュリティ」の「このまま開く」で一度だけ許可してください（macOS 15 からは、右クリック →「開く」では許可できません）。`git clone` で取得した場合は止められません。）
 
 | ファイル | 中身 |
 |---|---|

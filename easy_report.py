@@ -847,8 +847,8 @@ def guard_findings(facts, todo, good):
                      "Type sudo spctl --master-enable, press return, and enter your Mac password"),
                    RECHECK],
             time=t("約1分", "About 1 min"),
-            undo=t("必要なアプリだけ、Finder で右クリック →「開く」で個別に許可できます",
-                   "You can still allow a single app by right-clicking it in Finder and choosing Open")))
+            undo=t("止められたアプリは、一度開こうとしたあと、システム設定 →「プライバシーとセキュリティ」の「このまま開く」で1つずつ許可できます",
+                   "If an app is blocked, try opening it once, then allow just that app with Open Anyway in System Settings → Privacy & Security")))
     elif g.get("gatekeeper"):
         ok.append(t("Gatekeeper はオン", "Gatekeeper is on"))
     sip = g.get("sip")
