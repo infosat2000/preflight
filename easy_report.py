@@ -472,6 +472,62 @@ def analyze(facts):
     return todo, ok
 
 
+def entry_map(facts, todo):
+    """素人向けの「入口の地図」。このMacの中・同じ Wi-Fi/LAN・インターネットの3つの場所に、
+    何がどんな状態で置かれているかを並べる。各項目の cat はレポートの説明カードへの飛び先。"""
+    lvl = {f["cat"]: f["level"] for f in reversed(todo)}  # 同じ項目なら重い方（todo は赤が先）
+
+    def item(cat, label, level):
+        return {"cat": cat, "label": label, "level": level}
+
+    mac, lan, net = [], [], []
+    inner = [l for l in facts.get("listeners", []) if l.get("scope") in ("loopback", "tailscale")]
+    if inner:
+        mac.append(item("apps", t("中だけで動くサービス %d 件" % len(inner), "%d service%s kept inside" % (
+            len(inner), "" if len(inner) == 1 else "s")), GREEN))
+    secrets = facts.get("secrets", [])
+    if secrets:
+        mac.append(item("keys", t("鍵が書かれたファイル %d 件" % len(secrets), "%d file%s with keys" % (
+            len(secrets), "" if len(secrets) == 1 else "s")), lvl.get("keys", YELLOW)))
+    elif "secrets" in facts:
+        mac.append(item("keys", t("鍵の置き忘れなし", "No stray keys"), GREEN))
+
+    for p in open_admin_ports(facts):
+        lan.append(item("ports", port_info(p)[0], RED))
+    if facts.get("lanProbe") and not open_admin_ports(facts):
+        lan.append(item("ports", t("遠隔操作・共有の入口は閉", "Remote access and sharing closed"), GREEN))
+    normal = 0
+    for app, ps in sorted(wide_listeners(facts).items()):
+        if ps <= set(PORTS) or app.startswith("（root"):
+            continue
+        if app in NORMAL_APPS:
+            normal += 1
+        else:
+            lan.append(item("apps", app_name(app), YELLOW))
+    if normal:
+        lan.append(item("apps", t("Apple の標準機能 %d 件" % normal, "%d built-in Apple feature%s" % (
+            normal, "" if normal == 1 else "s")), GREEN))
+
+    for u in facts.get("urls", []):
+        uid, url, v = u.get("id", ""), u.get("url", ""), u.get("verdict")
+        host = url.split("//", 1)[-1].rstrip("/")
+        if "admin" in uid and v == "open":
+            level = RED
+        elif uid.startswith("old-") and v != "unreachable":
+            level = YELLOW
+        elif uid.startswith("old-") or v in ("open", "auth_required"):
+            level = GREEN
+        else:
+            continue
+        net.append(item("sites", same(host), level))
+    jobs = facts.get("agents", {}).get("claude_launchd_jobs", [])
+    if jobs:
+        net.append(item("ai", t("AI を自動で呼ぶ仕組み %d 件" % len(jobs), "%d automatic AI task%s" % (
+            len(jobs), "" if len(jobs) == 1 else "s")), YELLOW))
+
+    return {"firewall": bool(facts.get("firewall", {}).get("enabled")), "mac": mac, "lan": lan, "net": net}
+
+
 def checks(todo):
     """6つの項目それぞれの信号（いちばん悪いもの）。"""
     res = []
@@ -540,6 +596,7 @@ def build_data(facts, prev=None, detail=""):
         "verdict": RED if reds else YELLOW if todo else GREEN,
         "counts": {"red": reds, "yellow": len(todo) - reds, "ok": len(ok)},
         "checks": checks(todo),
+        "map": entry_map(facts, todo),
         "todo": todo,
         "ok": ok,
         "diff": changes(prev, facts) if prev else None,
@@ -578,6 +635,11 @@ def main():
     data = build_data(facts, previous_facts(out), detail or "")
     if where:
         data["detailPath"] = where
+    # 専門家向け: 自動で作った構成図を、評価エンジンのブラウザ版で開くための情報
+    model = os.path.join(out, "model.json")
+    if os.path.exists(model):
+        data["modelPath"] = os.path.abspath(model)
+        data["engineDir"] = os.path.join(HERE, "vendor", "CyberRiskScape")
     path = os.path.join(out, "report.html")
     # 中身は自分の弱点の地図なので、run.sh の外から呼ばれても本人しか読めないようにする
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

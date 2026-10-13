@@ -390,6 +390,22 @@ class EasyReportTest(unittest.TestCase):
                 en = en.replace(bit, "")
             self.assertNotRegex(en, jp, x["en"])
 
+    def test_entry_map_places_each_way_in(self):
+        import easy_report
+        m = easy_report.build_data(facts())["map"]
+        self.assertTrue(m["firewall"])
+        lan = {x["label"]["en"]: x["level"] for x in m["lan"]}
+        net = {x["label"]["en"]: x["level"] for x in m["net"]}
+        self.assertEqual(lan["Remote Login (SSH)"], "red")         # sharing port open on the LAN
+        self.assertEqual(lan["MyServer"], "yellow")                # unknown app reachable from the LAN
+        self.assertEqual(net["shop.example.com/admin"], "red")     # admin page opens without login
+        self.assertEqual(net["old-campaign.example.com"], "yellow")
+        self.assertIn("1 automatic AI task", net)
+        cats = {c for c, _ in easy_report.CHECKS}
+        for x in m["mac"] + m["lan"] + m["net"]:
+            self.assertIn(x["cat"], cats)                          # every item can jump to a card
+            self.assertIn(x["level"], ("red", "yellow", "green"))
+
     def test_html_is_self_contained_and_escaped(self):
         import easy_report
         out = tempfile.mkdtemp()
