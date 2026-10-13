@@ -1023,7 +1023,7 @@ def main():
         data["detailPath"] = where
     # 専門家向け: 自動で作った構成図を、評価エンジンのブラウザ版で開くための情報
     model = os.path.join(out, "model.json")
-    if os.path.exists(model):
+    if os.path.exists(model) and os.path.isdir(os.path.join(HERE, "vendor", "CyberRiskScape", "node_modules")):
         data["modelPath"] = os.path.abspath(model)
         data["engineDir"] = os.path.join(HERE, "vendor", "CyberRiskScape")
     path = os.path.join(out, "report.html")

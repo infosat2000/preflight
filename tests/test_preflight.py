@@ -278,6 +278,42 @@ class ReportTest(unittest.TestCase):
             shutil.rmtree(out)
 
 
+class NoEngineTest(unittest.TestCase):
+    """評価エンジンを入れていない Mac でも、レポートと前回との差分が出る。"""
+
+    def test_report_without_engine(self):
+        root = tempfile.mkdtemp()
+        try:
+            first, second = os.path.join(root, "2026-10-01_090000"), os.path.join(root, "2026-10-02_090000")
+            for d in (first, second):
+                os.makedirs(d)
+            prev, cur = facts(), facts()
+            cur["lanProbe"] = [dict(x, open=False) for x in cur["lanProbe"]]
+            for d, f in ((first, prev), (second, cur)):
+                with open(os.path.join(d, "facts.json"), "w", encoding="utf-8") as fp:
+                    json.dump(f, fp, ensure_ascii=False)
+            sys_argv = sys.argv
+            try:
+                for d in (first, second):
+                    sys.argv = ["report.py", d]
+                    report.main()
+            finally:
+                sys.argv = sys_argv
+            with open(os.path.join(first, "report.md"), encoding="utf-8") as fp:
+                self.assertIn("初回のため差分はありません", fp.read())
+            with open(os.path.join(second, "report.md"), encoding="utf-8") as fp:
+                text = fp.read()
+            self.assertIn("リモートログイン（SSH）が閉じました", text)
+            self.assertNotIn("## 3. 参考", text)
+            self.assertIn("./setup.sh --with-engine", text)
+            with open(os.path.join(second, "report.en.md"), encoding="utf-8") as fp:
+                en = fp.read()
+            self.assertIn("### Better", en)
+            self.assertNotIn("kept in the original Japanese", en)
+        finally:
+            shutil.rmtree(root)
+
+
 class ReportDiffTest(unittest.TestCase):
     def test_report_embeds_diff(self):
         out = tempfile.mkdtemp()

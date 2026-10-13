@@ -27,20 +27,24 @@ def build(out, lang):
 
     with open(os.path.join(out, "facts.json"), encoding="utf-8") as f:
         facts = json.load(f)
-    with open(os.path.join(out, "threats.json"), encoding="utf-8") as f:
-        threats = json.load(f)[0]["threats"]
-    with open(os.path.join(out, "ipa-checklist.csv"), encoding="utf-8-sig") as f:
-        rows = list(csv.reader(f))
-    summary = next((r[1] for r in rows if r and r[0] == "集計"), "")
-    head = next(i for i, r in enumerate(rows) if r and r[0] == "グループ")
-    items = [dict(zip(rows[head], r)) for r in rows[head + 1:] if len(r) > 3]
+    # 評価エンジン（CyberRiskScape）は入れなくても動く。入れていなければ 3・4 節を出さない
+    engine = os.path.exists(os.path.join(out, "threats.json")) and os.path.exists(os.path.join(out, "ipa-checklist.csv"))
+    threats, items, summary = [], [], ""
+    if engine:
+        with open(os.path.join(out, "threats.json"), encoding="utf-8") as f:
+            threats = json.load(f)[0]["threats"]
+        with open(os.path.join(out, "ipa-checklist.csv"), encoding="utf-8-sig") as f:
+            rows = list(csv.reader(f))
+        summary = next((r[1] for r in rows if r and r[0] == "集計"), "")
+        head = next(i for i, r in enumerate(rows) if r and r[0] == "グループ")
+        items = [dict(zip(rows[head], r)) for r in rows[head + 1:] if len(r) > 3]
     sep = "、" if J else ", "
 
     L = []
     L.append(T("# 実測点検レポート（%s）", "# Measured check report (%s)") % facts["measuredAt"].replace("T", " "))
     L.append(T("Blackbox Blast Preflight v%s で作成", "Made with Blackbox Blast Preflight v%s") % version())
     L.append("")
-    if not J:
+    if not J and engine:
         L.append("Names that come from the evaluation engine (threats, IPA checklist items, the diff) are kept in the original Japanese.")
         L.append("")
     L.append(T("## 1. 実測でしか分からないこと（このMac・公開URL）", "## 1. What only measurement can tell (this Mac, public URLs)"))
@@ -108,10 +112,27 @@ def build(out, lang):
         # 見出しを 2 段下げて、このレポートの節の中に収める
         for line in body.splitlines():
             L.append("##" + line if line.startswith("#") else line)
+    elif previous_changes(out):
+        ch = previous_changes(out)
+        for key, label in (("better", T("良くなったこと", "Better")), ("worse", T("悪くなったこと", "Worse"))):
+            if ch[key]:
+                L.append("### " + label)
+                L.extend("- " + x[lang] for x in ch[key])
+                L.append("")
+        if not (ch["better"] or ch["worse"]):
+            L.append(T("前回から変わったことはありません。", "Nothing changed since the last run."))
     else:
         L.append(T("初回のため差分はありません。次回の実行から、増えた入口・消えた入口がここに出ます。",
                    "This is the first run, so there is no diff yet. From the next run, new and removed entry points appear here."))
     L.append("")
+
+    if not engine:
+        L.append(T("IPA 注意喚起 17 項目の判定と、構成要素ごとの脅威の一覧は、評価エンジンを入れたときだけ出ます"
+                   "（`./setup.sh --with-engine`。Node.js と npm が必要です）。",
+                   "The IPA 17-item verdict and the per-component threat list appear only when the evaluation engine is installed "
+                   "(`./setup.sh --with-engine`; needs Node.js and npm)."))
+        L.append("")
+        return "\n".join(L) + "\n"
 
     L.append("---")
     L.append("")
@@ -154,6 +175,16 @@ def build(out, lang):
             L.append(T("  - 対象: %s", "  - Components: %s") % sep.join(a.split(" ", 1)[-1] if a.startswith("C") else a for a in assets))
     L.append("")
     return "\n".join(L) + "\n"
+
+
+def previous_changes(out):
+    """評価エンジンの diff.md がないときの差分。前回の facts.json と比べる。"""
+    import easy_report
+    prev = easy_report.previous_facts(out)
+    if not prev:
+        return None
+    with open(os.path.join(out, "facts.json"), encoding="utf-8") as f:
+        return easy_report.changes(prev, json.load(f))
 
 
 def main():

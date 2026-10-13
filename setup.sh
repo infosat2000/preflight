@@ -1,5 +1,7 @@
 #!/bin/bash
-# 初回の準備: CyberRiskScape（評価エンジン）を版を固定して取得・ビルドし、台帳のひな形を置く。
+# 初回の準備: 台帳のひな形と起動ボタンを置く。必要なのは macOS に入っている python3 だけ。
+# ./setup.sh --with-engine（または BB_PREFLIGHT_ENGINE=1）のときだけ、専門家向けの評価エンジン CyberRiskScape を
+# 版を固定して取得・ビルドする（git・Node.js・npm が必要）。一度入れたエンジンは、次からも使う。
 # 何度実行してもよい（取得済み・作成済みのものはそのまま残す）。
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -14,13 +16,25 @@ DEST="$HERE/vendor/CyberRiskScape"
 VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
 echo "Blackbox Blast Preflight v$VERSION"
 
-for c in git node npm; do
-  command -v "$c" >/dev/null || { echo "$c が見つかりません。先にインストールしてください。" >&2; exit 1; }
-done
+WITH_ENGINE="${BB_PREFLIGHT_ENGINE:-}"
+[ "${1:-}" = "--with-engine" ] && WITH_ENGINE=1
+[ -f "$DEST/dist-cli/main.js" ] && WITH_ENGINE=1
 
-if [ -n "${CRS_CLI:-}" ]; then
+# python3 は macOS に入っている。初めて使う Mac では「コマンドライン・デベロッパ・ツール」を入れる画面が出ることがある
+if [ -x /usr/bin/python3 ]; then PY=/usr/bin/python3; else PY=python3; fi
+if ! "$PY" -c "import sys; sys.exit(sys.version_info < (3, 9))" 2>/dev/null; then
+  echo "python3（3.9 以上）が使えません。画面に「コマンドライン・デベロッパ・ツール」をインストールする案内が出ていたら、インストールしてから、もう一度開いてください。" >&2
+  exit 1
+fi
+
+if [ -z "$WITH_ENGINE" ] && [ -z "${CRS_CLI:-}" ]; then
+  echo "評価エンジンは入れません（点検とレポートには不要です。専門家向けの一覧が要るときは ./setup.sh --with-engine）。"
+elif [ -n "${CRS_CLI:-}" ]; then
   echo "CRS_CLI が指定されているので、CyberRiskScape の取得は省略します: $CRS_CLI"
 else
+  for c in git node npm; do
+    command -v "$c" >/dev/null || { echo "評価エンジンを入れるには $c が必要です。先にインストールしてください。" >&2; exit 1; }
+  done
   if [ ! -d "$DEST/.git" ]; then
     git clone --depth 1 --branch "$CRS_TAG" "$CRS_REPO" "$DEST"
   fi

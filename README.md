@@ -24,22 +24,25 @@
 
 - 何も変更しません（プロセスの停止や設定変更はしない）。sudo も使いません。
 - 秘密情報の値はどのファイルにも書きません（見つかった鍵はファイル名と種類だけ）。
-- 準備（`setup.sh`）では評価エンジンの部品を npm で入れますが、`npm ci --ignore-scripts` でパッケージの install スクリプトは動かしません。版とロックファイルも固定しています。
+- 評価エンジンは既定では入れません。`./setup.sh --with-engine` で入れるときは部品を npm で入れますが、`npm ci --ignore-scripts` でパッケージの install スクリプトは動かしません。版とロックファイルも固定しています。
 - 外部への通信は、台帳に書いた自分の公開URLへの確認アクセスだけです。
 
 ## 必要なもの
 
 - macOS（`lsof`・`netstat`・`socketfilterfw`・`curl` を使います）
-- python3（macOS 標準の 3.9 で動きます。追加のライブラリは不要）
-- Node.js と npm、git（評価エンジンの取得とビルドに使います）
+- python3（macOS 標準の 3.9 で動きます。追加のライブラリは不要）。初めて使う Mac では「コマンドライン・デベロッパ・ツール」を入れる案内が出ることがあります。その場合はインストールしてから、もう一度開いてください
+- 専門家向けの評価エンジン（IPA 17 項目の判定と脅威の一覧）を使うときだけ: Node.js と npm、git
 
 ## はじめかた
 
 ```bash
 git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-preflight
-./setup.sh      # CyberRiskScape v0.6.0 を取得・ビルドし、~/.bb-preflight/inventory.json にひな形を置く
+./setup.sh      # ~/.bb-preflight/inventory.json にひな形を置き、起動ボタンを置く（python3 だけで動く）
 # ~/.bb-preflight/inventory.json を自分の環境に合わせて書き換える（下の「台帳の書き方」）
-./run.sh        # 実測 → 評価 → レポート
+./run.sh        # 実測 → レポート
+
+# 専門家向け: 評価エンジン CyberRiskScape v0.6.0 も入れて、IPA 17 項目の判定と脅威の一覧を出す
+./setup.sh --with-engine
 ```
 
 結果は `~/.bb-preflight/out/<日時>/` に出ます。
@@ -50,10 +53,10 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 | ファイル | 中身 |
 |---|---|
 | `report.html` | ふつうの言葉で書いた点検結果。総合判定（NO-GO / CAUTION / CLEAR）・やること・直し方・前回との違い。起動ボタンからはこれがブラウザで開く。外部の読み込みはなく、どこにも送らない |
-| `report.md` | 1 枚まとめ（実測結果 → 前回との差分 → 参考: IPA 17 項目の判定 → 参考: 未対応の High 以上の脅威） |
-| `ipa-checklist.csv` / `.md` | IPA 注意喚起（2026-10-09）17 項目のチェックリスト |
-| `threats.json` | 検出された全脅威 |
-| `diff.md` | 前回との差分（2 回目以降） |
+| `report.md` | 1 枚まとめ（実測結果 → 前回との差分。評価エンジンを入れたときは、参考: IPA 17 項目の判定 → 参考: 未対応の High 以上の脅威 も） |
+| `ipa-checklist.csv` / `.md`（評価エンジンあり） | IPA 注意喚起（2026-10-09）17 項目のチェックリスト |
+| `threats.json`（評価エンジンあり） | 検出された全脅威 |
+| `diff.md`（評価エンジンあり） | 構成図どうしの差分（2 回目以降） |
 | `facts.json` | 実測の生データ |
 
 ### 個人データの置き場所
@@ -126,7 +129,7 @@ cd vendor/CyberRiskScape && npm run build && npx vite preview --host 127.0.0.1
 ## 動作確認した環境
 
 - Intel Mac（作者の実機）。
-- GitHub Actions の `macos-latest`（Apple Silicon）。ひな形の台帳のまま、`setup.sh` → テスト → `run.sh` 2 回を毎回の push で通している（[.github/workflows/macos.yml](.github/workflows/macos.yml)）。
+- GitHub Actions の `macos-latest`（Apple Silicon）。ひな形の台帳のまま、毎回の push で2通りを通している（[.github/workflows/macos.yml](.github/workflows/macos.yml)）: Node.js を使えなくした python3 だけの入れ方（`setup.sh` → テスト → 起動ファイル 2 回）と、評価エンジンありの入れ方（`setup.sh --with-engine` → テスト → `run.sh` 2 回）。
 
 ## 開発
 
@@ -145,7 +148,7 @@ python3 -m unittest discover -s tests
 
 ## ライセンス
 
-Apache License 2.0。評価エンジンの CyberRiskScape（Copyright 2026 TAKASHI OMOTO、Apache 2.0）はこのリポジトリには含まず、`setup.sh` が公式リポジトリから取得します。詳しくは [NOTICE](NOTICE)。
+Apache License 2.0。評価エンジンの CyberRiskScape（Copyright 2026 TAKASHI OMOTO、Apache 2.0）はこのリポジトリには含まず、`./setup.sh --with-engine` のときだけ公式リポジトリから取得します。詳しくは [NOTICE](NOTICE)。
 本ツールは CyberRiskScape プロジェクトとは関係のない独立したプロジェクトです。
 
 無保証です。Issue への対応は不定期です。

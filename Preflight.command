@@ -4,7 +4,6 @@
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1
 DATA="${BB_PREFLIGHT_HOME:-$HOME/.bb-preflight}"
-CRS="${CRS_CLI:-$PWD/vendor/CyberRiskScape/dist-cli/main.js}"
 
 finish() {
   echo
@@ -13,8 +12,8 @@ finish() {
 }
 
 echo "== Blackbox Blast Preflight =="
-if [ ! -f "$CRS" ] || [ ! -f "$DATA/inventory.json" ]; then
-  echo "初回のセットアップをします（数分かかることがあります）。"
+if [ ! -f "$DATA/inventory.json" ]; then
+  echo "初回のセットアップをします。"
   ./setup.sh || { echo "セットアップに失敗しました。上のメッセージを確認してください。"; finish 1; }
 fi
 if cmp -s examples/inventory.example.json "$DATA/inventory.json"; then

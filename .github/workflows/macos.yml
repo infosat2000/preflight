@@ -12,6 +12,36 @@ permissions:
   contents: read
 
 jobs:
+  # 一般の人の入れ方: 評価エンジンなし。Node.js も git も使わず、macOS に入っている python3 だけで動くか
+  python-only:
+    runs-on: macos-latest
+    env:
+      PATH: /usr/bin:/bin:/usr/sbin:/sbin
+    steps:
+      - uses: actions/checkout@v4
+      - name: No Node.js on PATH
+        run: |
+          echo "BB_PREFLIGHT_HOME=$RUNNER_TEMP/bb-preflight-home" >> "$GITHUB_ENV"
+          if command -v node; then echo 'node should not be on PATH'; exit 1; fi
+          /usr/bin/python3 --version
+      - name: setup.sh (no engine)
+        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor
+      - name: Unit tests
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Launcher, first and second run
+        run: |
+          /usr/bin/python3 -c "import json,os;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
+          echo | ./Preflight.command | tee "$RUNNER_TEMP/l1.log"
+          grep -q 'レポートを開きます' "$RUNNER_TEMP/l1.log"
+          sleep 1
+          echo | ./Preflight.command | tee "$RUNNER_TEMP/l2.log"
+          latest="$(ls -d "$BB_PREFLIGHT_HOME"/out/*/ | sort | tail -1)"
+          for f in report.html report.md report.en.md facts.json; do test -s "$latest/$f" || { echo "missing $f"; exit 1; }; done
+          test "$(stat -f %Lp "$latest/report.html")" = 600
+          grep -q '## 2. 前回との差分' "$latest/report.md"
+          if grep -q '## 3. 参考' "$latest/report.md"; then echo 'engine section without engine'; exit 1; fi
+          echo "::notice title=python-only::$(sw_vers -productVersion) $(uname -m) $(/usr/bin/python3 --version 2>&1)"
+
   fresh-install:
     strategy:
       fail-fast: false
@@ -31,7 +61,7 @@ jobs:
           /usr/bin/python3 --version
           node --version
       - name: setup.sh (fetch and build CyberRiskScape, place example inventory)
-        run: ./setup.sh
+        run: ./setup.sh --with-engine
       - name: Unit and CLI integration tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
       - name: run.sh (first run)
