@@ -1,0 +1,292 @@
+<title>Preflight レポート</title>
+<style>
+/* Layout: cockpit panel. Radar scope + verdict readout on top, preflight checklist strip, then task cards. Single dark look by design (matches the app icon). */
+:root{
+  --bg:#0c0e11; --panel:#14171c; --panel-2:#1a1e24; --line:#272c34;
+  --fg:#ebe8e2; --muted:#8d949e; --orange:#ff6a13;
+  --red:#ff5d55; --amber:#ffb224; --green:#3fd98a;
+  --red-dim:rgba(255,93,85,.14); --amber-dim:rgba(255,178,36,.14); --green-dim:rgba(63,217,138,.13);
+  --sans:"Hiragino Sans","Hiragino Kaku Gothic ProN",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.75 var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:880px;margin:0 auto;padding-inline:16px;padding-block:28px 72px}
+.mono{font-family:var(--mono);letter-spacing:.06em}
+.eyebrow{font:600 11px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+.demo{border:1px dashed var(--orange);color:var(--orange);border-radius:8px;padding:8px 12px;margin-bottom:18px;font-size:13px}
+header.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+header.top h1{margin:6px 0 0;font-size:24px;line-height:1.3;font-weight:700;letter-spacing:.01em;text-wrap:balance}
+header.top .when{font:12px/1.4 var(--mono);color:var(--muted);text-align:right}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:20px;align-items:stretch;
+  background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px}
+.scope{position:relative;aspect-ratio:1/1;max-width:100%}
+.scope canvas{width:100%;height:100%;display:block}
+.readout{display:flex;flex-direction:column;justify-content:center;gap:14px;min-width:0}
+.code{font:800 44px/1 var(--mono);letter-spacing:.08em}
+.code.red{color:var(--red)} .code.yellow{color:var(--amber)} .code.green{color:var(--green)}
+.headline{font-size:19px;font-weight:700;line-height:1.5;text-wrap:balance;margin:0}
+.gauges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.gauge{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.gauge b{display:block;font:700 28px/1.1 var(--mono);font-variant-numeric:tabular-nums}
+.gauge span{font-size:12px;color:var(--muted)}
+.gauge.red b{color:var(--red)} .gauge.yellow b{color:var(--amber)} .gauge.green b{color:var(--green)}
+
+/* checklist strip */
+.checklist{margin:18px 0 8px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.ck{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+.ck .lamp{flex:none;width:10px;height:10px;border-radius:50%;background:#3a3f47;box-shadow:none}
+.ck .lbl{flex:1;min-width:0;font-size:13.5px;overflow-wrap:anywhere}
+.ck .st{font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--muted)}
+.ck.on.red .lamp{background:var(--red);box-shadow:0 0 10px var(--red)}
+.ck.on.yellow .lamp{background:var(--amber);box-shadow:0 0 10px var(--amber)}
+.ck.on.green .lamp{background:var(--green);box-shadow:0 0 8px var(--green)}
+.ck.on.red .st{color:var(--red)} .ck.on.yellow .st{color:var(--amber)} .ck.on.green .st{color:var(--green)}
+
+h2{font-size:17px;margin:36px 0 12px;display:flex;align-items:center;gap:10px}
+h2 .eyebrow{color:var(--orange)}
+
+/* tasks */
+.tasks{display:grid;gap:12px}
+.task{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;
+  animation:rise .5s cubic-bezier(.2,.7,.2,1) backwards}
+.task header{display:flex;gap:10px;align-items:flex-start}
+.pill{flex:none;font:700 11px/1 var(--mono);letter-spacing:.08em;border-radius:999px;padding:6px 10px;margin-top:2px}
+.pill.red{background:var(--red-dim);color:var(--red)} .pill.yellow{background:var(--amber-dim);color:var(--amber)}
+.task h3{margin:0;font-size:16.5px;line-height:1.55;text-wrap:balance;min-width:0}
+.task dl{display:grid;grid-template-columns:7.5em minmax(0,1fr);gap:6px 14px;margin:14px 0 0}
+.task dt{font-size:12.5px;color:var(--muted);padding-top:2px}
+.task dd{margin:0;overflow-wrap:anywhere}
+.task dd.fix{color:var(--fg);font-weight:600}
+.task dd.fix::before{content:"→ ";color:var(--orange)}
+
+/* lists */
+.list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.list li{display:flex;gap:10px;align-items:flex-start;overflow-wrap:anywhere;min-width:0}
+.list li::before{flex:none;font:700 13px/1.75 var(--mono)}
+.list.ok li::before{content:"✓";color:var(--green)}
+.list.better li::before{content:"▲";color:var(--green)}
+.list.worse li::before{content:"▼";color:var(--red)}
+.list.note li::before{content:"・";color:var(--muted)}
+.sub{font:600 12px/1 var(--mono);letter-spacing:.12em;color:var(--muted);margin:14px 0 8px}
+p.plain{margin:0;color:var(--muted)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+
+details{margin-top:36px;border-top:1px solid var(--line);padding-top:16px}
+summary{cursor:pointer;color:var(--muted);font-weight:600}
+summary:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-offset:3px;border-radius:4px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.6 var(--mono);color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-height:60vh;overflow:auto}
+footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--muted);letter-spacing:.06em}
+
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media (max-width:640px){
+  .hero{grid-template-columns:minmax(0,1fr)}
+  .scope{max-width:260px;margin:0 auto;width:100%}
+  .code{font-size:36px}
+  .checklist{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .task dl{grid-template-columns:minmax(0,1fr)}
+  .task dt{padding-top:6px}
+}
+@media (prefers-reduced-motion:reduce){.task{animation:none}}
+</style>
+
+<div class="wrap" id="app">
+  <div class="demo" id="demo" hidden>これは見本です。表示している結果はすべてダミーデータで、実在の Mac のものではありません。</div>
+  <header class="top">
+    <div>
+      <div class="eyebrow">Blackbox Blast Preflight</div>
+      <h1>このMacの点検結果</h1>
+    </div>
+    <div class="when" id="when"></div>
+  </header>
+
+  <section class="hero" aria-label="総合判定">
+    <div class="scope"><canvas id="radar" width="600" height="600" aria-hidden="true"></canvas></div>
+    <div class="readout">
+      <div class="eyebrow">Preflight verdict</div>
+      <div class="code" id="code"></div>
+      <p class="headline" id="headline"></p>
+      <div class="gauges">
+        <div class="gauge red"><b id="n-red">0</b><span>今すぐ直す</span></div>
+        <div class="gauge yellow"><b id="n-yellow">0</b><span>確認しておく</span></div>
+        <div class="gauge green"><b id="n-ok">0</b><span>問題なし</span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="checklist" id="checklist" aria-label="点検した項目"></div>
+
+  <section id="todo-sec">
+    <h2><span class="eyebrow">Action</span>やること</h2>
+    <div class="tasks" id="tasks"></div>
+  </section>
+
+  <section>
+    <h2><span class="eyebrow">Delta</span>前回の点検から変わったこと</h2>
+    <div class="panel" id="diff"></div>
+  </section>
+
+  <section id="ok-sec">
+    <h2><span class="eyebrow">Clear</span>確認できて、問題なかったこと</h2>
+    <div class="panel"><ul class="list ok" id="ok"></ul></div>
+  </section>
+
+  <section>
+    <h2><span class="eyebrow">Limits</span>この点検で分からないこと</h2>
+    <div class="panel"><ul class="list note">
+      <li>パスワードの強さや使い回しは調べていません。</li>
+      <li>ほかの機器から本当につながるかは試していません。このMacの中から調べています。</li>
+      <li>「問題なし」は安全の保証ではありません。調べた項目の範囲で問題が見つからなかった、という意味です。</li>
+      <li>このレポートは、このMacの中だけで作っています。点検結果はどこにも送っていません。</li>
+    </ul></div>
+  </section>
+
+  <details id="detail-box"><summary>詳しい情報（専門家向け）</summary><pre id="detail"></pre></details>
+  <footer>BLACKBOX BLAST PREFLIGHT · RULE-BASED · NOTHING LEAVES THIS MAC</footer>
+</div>
+
+<script id="preflight-data" type="application/json">__PREFLIGHT_DATA__</script>
+<script>
+(function () {
+  var D = JSON.parse(document.getElementById("preflight-data").textContent);
+  var $ = function (id) { return document.getElementById(id); };
+  var el = function (tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (D.demo) $("demo").hidden = false;
+  $("when").textContent = D.measuredAt ? "MEASURED " + D.measuredAt : "";
+
+  var CODE = { red: "NO-GO", yellow: "CAUTION", green: "CLEAR" };
+  var c = D.counts;
+  var head = D.verdict === "red" ? "離陸の前に、直してほしいことが " + c.red + " 件あります。"
+    : D.verdict === "yellow" ? "急ぎの問題はありません。確認してほしいことが " + c.yellow + " 件あります。"
+    : "調べた範囲では、問題は見つかりませんでした。";
+  $("code").textContent = CODE[D.verdict];
+  $("code").className = "code " + D.verdict;
+  $("headline").textContent = head;
+
+  // count up
+  [["n-red", c.red], ["n-yellow", c.yellow], ["n-ok", c.ok]].forEach(function (p) {
+    var node = $(p[0]), end = p[1];
+    if (reduce || !end) { node.textContent = end; return; }
+    var t0 = null;
+    function step(t) { if (!t0) t0 = t; var k = Math.min(1, (t - t0) / 900); node.textContent = Math.round(end * (1 - Math.pow(1 - k, 3))); if (k < 1) requestAnimationFrame(step); }
+    requestAnimationFrame(step);
+  });
+
+  // checklist: lamps light one by one
+  var ST = { red: "NO-GO", yellow: "CHECK", green: "OK" };
+  D.checks.forEach(function (ck, i) {
+    var row = el("div", "ck " + ck.level);
+    row.appendChild(el("span", "lamp"));
+    row.appendChild(el("span", "lbl", ck.label));
+    var st = el("span", "st mono", reduce ? ST[ck.level] : "···");
+    row.appendChild(st);
+    $("checklist").appendChild(row);
+    function on() { row.classList.add("on"); st.textContent = ST[ck.level]; }
+    if (reduce) on(); else setTimeout(on, 350 + i * 220);
+  });
+
+  // tasks
+  if (!D.todo.length) $("todo-sec").hidden = true;
+  D.todo.forEach(function (f, i) {
+    var card = el("article", "task");
+    card.style.animationDelay = (reduce ? 0 : 0.25 + i * 0.09) + "s";
+    var h = el("header");
+    h.appendChild(el("span", "pill " + f.level, f.level === "red" ? "今すぐ直す" : "確認しておく"));
+    h.appendChild(el("h3", null, f.title));
+    card.appendChild(h);
+    var dl = el("dl");
+    [["何が起きているか", f.what, ""], ["放っておくと", f.why, ""], ["直し方", f.how, "fix"]].forEach(function (r) {
+      dl.appendChild(el("dt", null, r[0])); dl.appendChild(el("dd", r[2], r[1]));
+    });
+    card.appendChild(dl);
+    $("tasks").appendChild(card);
+  });
+
+  // diff
+  var diff = $("diff");
+  if (!D.diff) diff.appendChild(el("p", "plain", "今回が初めての点検です。次からは、良くなったこと・悪くなったことがここに出ます。"));
+  else if (!D.diff.better.length && !D.diff.worse.length) diff.appendChild(el("p", "plain", "前回から変わったことはありません。"));
+  else {
+    [["better", "良くなったこと"], ["worse", "悪くなったこと"]].forEach(function (k) {
+      var items = D.diff[k[0]]; if (!items.length) return;
+      diff.appendChild(el("div", "sub", k[1]));
+      var ul = el("ul", "list " + k[0]);
+      items.forEach(function (x) { ul.appendChild(el("li", null, x)); });
+      diff.appendChild(ul);
+    });
+  }
+
+  // ok
+  if (!D.ok.length) $("ok-sec").hidden = true;
+  D.ok.forEach(function (x) { $("ok").appendChild(el("li", null, x)); });
+
+  if (D.detail) $("detail").textContent = D.detail; else $("detail-box").hidden = true;
+
+  // radar scope
+  var cv = $("radar"), g = cv.getContext("2d"), W = cv.width, R = W / 2 - 14;
+  var css = getComputedStyle(document.documentElement);
+  var col = function (n) { return css.getPropertyValue(n).trim(); };
+  var C = { red: col("--red"), yellow: col("--amber"), green: col("--green"), orange: col("--orange"), line: col("--line"), muted: col("--muted") };
+  var blips = D.todo.map(function (f, i) {
+    var n = D.todo.length, a = -Math.PI / 2 + (i + 0.5) * (2 * Math.PI / n) + 0.35;
+    var r = f.level === "red" ? 0.38 + 0.12 * (i % 2) : 0.62 + 0.14 * (i % 2);
+    return { a: a, r: r * R, c: C[f.level], hit: -1 };
+  });
+  function norm(a) { a %= 2 * Math.PI; return a < 0 ? a + 2 * Math.PI : a; }
+  function draw(t) {
+    var sweep = reduce ? -Math.PI / 4 : norm(t / 1000 * 1.25 - Math.PI / 2);
+    g.clearRect(0, 0, W, W);
+    g.save(); g.translate(W / 2, W / 2);
+    // face
+    var face = g.createRadialGradient(0, 0, 0, 0, 0, R);
+    face.addColorStop(0, "#161a1f"); face.addColorStop(1, "#0f1215");
+    g.fillStyle = face; g.beginPath(); g.arc(0, 0, R, 0, 2 * Math.PI); g.fill();
+    g.strokeStyle = C.line; g.lineWidth = 2;
+    [0.25, 0.5, 0.75, 1].forEach(function (k) { g.beginPath(); g.arc(0, 0, R * k, 0, 2 * Math.PI); g.stroke(); });
+    g.beginPath(); g.moveTo(-R, 0); g.lineTo(R, 0); g.moveTo(0, -R); g.lineTo(0, R); g.stroke();
+    // ticks
+    for (var i = 0; i < 72; i++) {
+      var a = i * Math.PI / 36, l = i % 6 ? 8 : 16;
+      g.beginPath(); g.moveTo(Math.cos(a) * R, Math.sin(a) * R); g.lineTo(Math.cos(a) * (R - l), Math.sin(a) * (R - l)); g.stroke();
+    }
+    // sweep wedge
+    var steps = 28;
+    for (var s = 0; s < steps; s++) {
+      var a0 = sweep - (s + 1) * 0.035, a1 = sweep - s * 0.035;
+      g.fillStyle = "rgba(255,106,19," + (0.22 * (1 - s / steps)).toFixed(3) + ")";
+      g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, R, a0, a1); g.closePath(); g.fill();
+    }
+    g.strokeStyle = C.orange; g.lineWidth = 3;
+    g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(sweep) * R, Math.sin(sweep) * R); g.stroke();
+    // blips glow after the beam passes, then fade
+    blips.forEach(function (b) {
+      var behind = norm(sweep - norm(b.a));
+      var life = reduce ? 1 : Math.max(0.18, 1 - behind / (2 * Math.PI) * 1.3);
+      var x = Math.cos(b.a) * b.r, y = Math.sin(b.a) * b.r;
+      g.globalAlpha = life;
+      g.fillStyle = b.c; g.shadowColor = b.c; g.shadowBlur = 24 * life;
+      g.beginPath(); g.arc(x, y, 11, 0, 2 * Math.PI); g.fill();
+      g.shadowBlur = 0; g.globalAlpha = life * 0.5; g.strokeStyle = b.c; g.lineWidth = 2;
+      g.beginPath(); g.arc(x, y, 11 + 14 * (1 - life), 0, 2 * Math.PI); g.stroke();
+      g.globalAlpha = 1;
+    });
+    // centre mark
+    g.fillStyle = blips.length ? C.orange : C.green;
+    g.beginPath(); g.arc(0, 0, 7, 0, 2 * Math.PI); g.fill();
+    if (!blips.length) {
+      g.strokeStyle = C.green; g.lineWidth = 12; g.lineCap = "round";
+      g.beginPath(); g.moveTo(-R * 0.22, 0); g.lineTo(-R * 0.05, R * 0.17); g.lineTo(R * 0.26, -R * 0.16); g.stroke();
+    }
+    g.restore();
+    if (!reduce) requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+})();
+</script>

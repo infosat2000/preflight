@@ -48,7 +48,7 @@ jobs:
       - name: Check outputs
         run: |
           latest="$(ls -d "$BB_PREFLIGHT_HOME"/out/*/ | sort | tail -1)"
-          for f in report.md ipa-checklist.csv threats.json diff.md facts.json; do
+          for f in report.html report.md ipa-checklist.csv threats.json diff.md facts.json; do
             test -s "$latest/$f" || { echo "missing $f"; exit 1; }
           done
           test "$(stat -f %Lp "$BB_PREFLIGHT_HOME")" = 700

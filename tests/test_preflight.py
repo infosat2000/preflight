@@ -276,6 +276,74 @@ class ReportDiffTest(unittest.TestCase):
             shutil.rmtree(out)
 
 
+class EasyReportTest(unittest.TestCase):
+    def test_plain_language_findings(self):
+        import easy_report
+        f = facts()
+        d = easy_report.build_data(f)
+        self.assertEqual(d["verdict"], "red")
+        titles = " ".join(t["title"] for t in d["todo"])
+        self.assertIn("リモートログイン", titles)          # lanProbe 22 open
+        self.assertIn("管理画面が、ログインなしで開きます", titles)
+        self.assertIn("やめたはずのサイト", titles)
+        self.assertIn("大事な鍵", titles)
+        self.assertIn("AI が自動で動く", titles)
+        # red comes before yellow, every task says how to fix it
+        levels = [t["level"] for t in d["todo"]]
+        self.assertEqual(levels, sorted(levels, key=lambda x: x != "red"))
+        self.assertTrue(all(t["how"] for t in d["todo"]))
+        self.assertEqual(len(d["checks"]), 6)
+        self.assertIn("ファイアウォール（外から勝手につながれるのを防ぐ壁）は有効です。", d["ok"])
+
+    def test_apple_daemons_are_not_warnings(self):
+        import easy_report
+        f = facts()
+        f["listeners"] = [{"process": "rapportd", "pid": "1", "addr": "*:49152", "port": 49152, "scope": "all"}]
+        f["lanProbe"], f["urls"], f["secrets"] = [], [], []
+        f["agents"]["claude_launchd_jobs"] = []
+        d = easy_report.build_data(f)
+        self.assertEqual(d["verdict"], "green")
+        self.assertTrue(any("rapportd" in x for x in d["ok"]))
+
+    def test_diff_with_previous_run(self):
+        import easy_report
+        prev = facts()
+        cur = facts()
+        cur["lanProbe"] = [dict(x, open=False) for x in cur["lanProbe"]]
+        cur["secrets"] = []
+        ch = easy_report.changes(prev, cur)
+        self.assertIn("リモートログイン（SSH）が閉じました", ch["better"])
+        self.assertTrue(any("片付きました" in x for x in ch["better"]))
+        self.assertEqual(ch["worse"], [])
+
+    def test_html_is_self_contained_and_escaped(self):
+        import easy_report
+        out = tempfile.mkdtemp()
+        try:
+            base = os.path.join(out, "out")
+            for stamp in ("2026-10-12_100000", "2026-10-13_100000"):
+                os.makedirs(os.path.join(base, stamp))
+                shutil.copy(os.path.join(FIX, "facts.json"), os.path.join(base, stamp))
+            cur = os.path.join(base, "2026-10-13_100000")
+            with open(os.path.join(cur, "report.md"), "w", encoding="utf-8") as fp:
+                fp.write("# 詳細 </script><b>x</b>\n")
+            sys_argv = sys.argv
+            sys.argv = ["easy_report.py", cur]
+            try:
+                easy_report.main()
+            finally:
+                sys.argv = sys_argv
+            with open(os.path.join(cur, "report.html"), encoding="utf-8") as fp:
+                text = fp.read()
+            self.assertTrue(text.startswith("<!doctype html>"))
+            self.assertNotIn("__PREFLIGHT_DATA__", text)
+            self.assertNotIn("</script><b>", text)       # embedded data cannot break out of the script tag
+            self.assertNotRegex(text, r'(src|href)="https?://')  # nothing loads from the network
+            self.assertIn('"diff": {"better": [], "worse": []}', text)  # previous run was found
+        finally:
+            shutil.rmtree(out)
+
+
 class RepoHygieneTest(unittest.TestCase):
     def test_personal_data_is_ignored(self):
         with open(os.path.join(ROOT, ".gitignore")) as f:

@@ -46,6 +46,7 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 
 | ファイル | 中身 |
 |---|---|
+| `report.html` | ふつうの言葉で書いた点検結果。総合判定（NO-GO / CAUTION / CLEAR）・やること・直し方・前回との違い。起動ボタンからはこれがブラウザで開く。外部の読み込みはなく、どこにも送らない |
 | `report.md` | 1 枚まとめ（実測結果・IPA 17 項目の判定・未対応の High 以上の脅威） |
 | `ipa-checklist.csv` / `.md` | IPA 注意喚起（2026-10-09）17 項目のチェックリスト |
 | `threats.json` | 検出された全脅威 |

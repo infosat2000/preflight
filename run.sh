@@ -30,4 +30,6 @@ if [ -f "$OUT/prev-model.json" ]; then
   node "$CRS" diff "$OUT/prev-model.json" "$MODEL" --format md --out "$OUT/diff.md" || true
 fi
 "$PY" "$HERE/report.py" "$OUT"
-echo "レポート: $OUT/report.md"
+"$PY" "$HERE/easy_report.py" "$OUT"
+echo "詳細（専門家向け）: $OUT/report.md"
+echo "レポート: $OUT/report.html"
