@@ -132,6 +132,19 @@ class SecretScanTest(unittest.TestCase):
         self.assertEqual(easy_report.changes(prev, {"secrets": [{"file": "~/app/.env"}]}),
                          {"better": [], "worse": []})                  # older full paths still match
 
+    def test_own_folder_is_skipped(self):
+        # このツールのテストには偽の鍵があるので、ツール自身のフォルダは見ない
+        key = "sk-" + "ant-" + "a1B2c3D4e5F6g7H8i9J0kLmNoPq"
+        self.write("tool/tests/fixture.py", "K = '%s'\n" % key)
+        self.write("app/.env", "K=%s\n" % key)
+        old = collect.TOOL_DIR
+        collect.TOOL_DIR = os.path.realpath(os.path.join(self.root, "tool"))
+        try:
+            hits = collect.secret_scan([self.root])
+        finally:
+            collect.TOOL_DIR = old
+        self.assertEqual([os.path.basename(h["file"]) for h in hits], [".env"])
+
     def test_npm_token(self):
         tok = "npm" + "_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
         self.write(".npmrc", "//registry.npmjs.org/:_authToken=%s\n" % tok)
@@ -744,22 +757,42 @@ class DiagramServerTest(unittest.TestCase):
         import functools
         import socketserver
         import threading
+        import urllib.error
         import urllib.request
         import diagram
         dist = tempfile.mkdtemp()
         try:
             with open(os.path.join(dist, "index.html"), "w") as fp:
                 fp.write("<html>app</html>")
-            handler = functools.partial(diagram.Handler, directory=dist, model=b'{"layers": {}}')
+            handler = functools.partial(diagram.Handler, directory=dist, model=b'{"layers": {}}', token="s3cret")
             srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), handler)
             threading.Thread(target=srv.serve_forever, daemon=True).start()
-            base = "http://127.0.0.1:%d" % srv.server_address[1]
+            port = srv.server_address[1]
+            base = "http://127.0.0.1:%d" % port
             try:
-                get = lambda p: urllib.request.urlopen(base + p, timeout=5).read().decode()
-                self.assertIn('indexedDB.open("cyberriskscape"', get("/__preflight/load.html"))
-                self.assertIn("backup-", get("/__preflight/load.html"))      # work in the app is kept
-                self.assertEqual(json.loads(get("/__preflight/model.json")), {"layers": {}})
+                def get(p, host=None):
+                    req = urllib.request.Request(base + p)
+                    if host:
+                        req.add_header("Host", host)
+                    return urllib.request.urlopen(req, timeout=5).read().decode()
+
+                def refused(p, host=None):
+                    with self.assertRaises(urllib.error.HTTPError) as e:
+                        get(p, host)
+                    self.assertEqual(e.exception.code, 403)
+
+                self.assertIn('indexedDB.open("cyberriskscape"', get("/__preflight/load.html?t=s3cret"))
+                self.assertIn("backup-", get("/__preflight/load.html?t=s3cret"))      # work in the app is kept
+                self.assertEqual(json.loads(get("/__preflight/model.json?t=s3cret")), {"layers": {}})
+                self.assertEqual(json.loads(get("/__preflight/model.json?t=s3cret", "localhost:%d" % port)), {"layers": {}})
                 self.assertIn("app", get("/"))
+                # the map of weak spots needs the per-run token
+                refused("/__preflight/model.json")
+                refused("/__preflight/model.json?t=wrong")
+                refused("/__preflight/load.html")
+                # DNS rebinding: another site's name pointing at 127.0.0.1 is refused
+                refused("/__preflight/model.json?t=s3cret", "evil.example:%d" % port)
+                refused("/", "evil.example:%d" % port)
             finally:
                 srv.shutdown()
                 srv.server_close()

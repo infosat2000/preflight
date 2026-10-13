@@ -25,7 +25,7 @@ jobs:
           if command -v node; then echo 'node should not be on PATH'; exit 1; fi
           /usr/bin/python3 --version
       - name: setup.sh (no engine)
-        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor && test ! -e "$HOME/Applications/Blackbox Blast Preflight Diagram.app"
+        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor && test ! -e "/Applications/Blackbox Blast Preflight Diagram.app" && test ! -e "$HOME/Applications/Blackbox Blast Preflight Diagram.app"
       - name: Unit tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
       - name: Launcher, first and second run
@@ -72,14 +72,16 @@ jobs:
         run: |
           # ひな形のままだと台帳を開いて止まる。少し書き換えてから実測の経路を通す
           /usr/bin/python3 -c "import json,os,sys;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
-          app="$HOME/Applications/Blackbox Blast Preflight.app"
+          # 管理者のユーザー（GitHub の Mac もそう）なら /Applications、そうでなければ ~/Applications に置かれる
+          apps=/Applications; [ -w /Applications ] || apps="$HOME/Applications"
+          app="$apps/Blackbox Blast Preflight.app"
           plutil -lint "$app/Contents/Info.plist"
           # アプリの版は VERSION ファイルと同じ
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$(tr -d '[:space:]' < VERSION)"
           test -s "$app/Contents/Resources/AppIcon.icns"
           test -x "$app/Contents/MacOS/launcher"
           # 評価エンジンありの Mac には、構成図の起動ボタンも置かれる
-          dapp="$HOME/Applications/Blackbox Blast Preflight Diagram.app"
+          dapp="$apps/Blackbox Blast Preflight Diagram.app"
           plutil -lint "$dapp/Contents/Info.plist"
           test -s "$dapp/Contents/Resources/AppIcon.icns"
           grep -q 'Diagram.command' "$dapp/Contents/MacOS/launcher"
@@ -93,9 +95,15 @@ jobs:
           test -s vendor/CyberRiskScape/dist/index.html
           BB_PREFLIGHT_NO_BROWSER=1 /usr/bin/python3 diagram.py > "$RUNNER_TEMP/diagram.log" 2>&1 &
           sleep 2
+          # 起動ごとの合言葉は、ブラウザで開く URL にだけ載る
+          t="$(grep -o 't=[A-Za-z0-9_-]*' "$RUNNER_TEMP/diagram.log" | head -1)"
+          test -n "$t"
           curl -fsS http://127.0.0.1:4180/ | grep -qi '<div id="root"'
-          curl -fsS http://127.0.0.1:4180/__preflight/model.json | /usr/bin/python3 -c "import json,sys; assert json.load(sys.stdin)['layers']['L1']['nodes']"
-          curl -fsS http://127.0.0.1:4180/__preflight/load.html | grep -q cyberriskscape
+          curl -fsS "http://127.0.0.1:4180/__preflight/model.json?$t" | /usr/bin/python3 -c "import json,sys; assert json.load(sys.stdin)['layers']['L1']['nodes']"
+          curl -fsS "http://127.0.0.1:4180/__preflight/load.html?$t" | grep -q cyberriskscape
+          # 合言葉なし、または別のサイトの名前（DNS リバインディング）では断る
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4180/__preflight/model.json)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: evil.example:4180' "http://127.0.0.1:4180/__preflight/model.json?$t")" = 403
           kill %1
       - name: Check outputs
         run: |

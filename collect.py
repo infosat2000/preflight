@@ -275,6 +275,7 @@ def npm_protection():
     return {"used": used, "ignoreScripts": ignore, "guard": guard}
 
 
+TOOL_DIR = os.path.dirname(os.path.realpath(__file__))
 SKIP_DIRS = ("node_modules", ".git", "dist", "dist-cli", "vendor", "vendor-CyberRiskScape", "__pycache__",
              "venv", ".venv", "site-packages", "out", "build", "target", ".next", ".nuxt", ".cache", ".npm",
              ".Trash", "Pods", "DerivedData", "Caches", "Photos Library.photoslibrary")
@@ -465,7 +466,8 @@ def secret_scan(roots):
         for dp, dns, fns in os.walk(root):
             if dp[len(root):].count(os.sep) >= SCAN_DEPTH:
                 dns[:] = []
-            dns[:] = [d for d in dns if d not in SKIP_DIRS]
+            # このツール自身のフォルダは見ない（テスト用の偽の鍵を、本物の鍵と見間違えないように）
+            dns[:] = [d for d in dns if d not in SKIP_DIRS and os.path.realpath(os.path.join(dp, d)) != TOOL_DIR]
             for fn in fns:
                 if not (fn.endswith(exts) or fn.startswith(".env") or fn in (".npmrc", ".netrc", ".pypirc")
                         or fn.endswith((".token", ".plist", ".env", ".cfg", ".ini", ".conf"))):

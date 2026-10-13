@@ -62,8 +62,9 @@ else
   echo "台帳はそのまま使います: $DATA/inventory.json"
 fi
 
-# 起動ボタン: アイコン付きの .app を ~/Applications に置く（sudo 不要）。
-# Finder の「アプリケーション」・Launchpad・Spotlight から開ける。中身は起動ファイル（.command）をターミナルで開くだけ。
+# 起動ボタン: アイコン付きの .app を「アプリケーション」に置く（sudo 不要）。
+# 管理者のユーザーなら /Applications（Finder のサイドバーの「アプリケーション」）に、そうでなければ ~/Applications に置く。
+# Launchpad・Spotlight からも開ける。中身は起動ファイル（.command）をターミナルで開くだけ。
 # 置きたくない場合は BB_PREFLIGHT_NO_SHORTCUT=1 で実行する。何度実行しても同じものを上書きする。
 # 使い方: make_app "アプリ名" 起動ファイル バンドルID アイコンの1024pxPNG
 make_app() {
@@ -104,11 +105,38 @@ PLIST
   echo "起動ボタンを置きました: $app"
 }
 
+# 前の版が ~/Applications に置いた起動ボタンは、この setup.sh が作ったものだけ片付ける（同じものが2つ並ばないように）
+remove_old_app() {
+  local old="$1" bundle="$2"
+  [ "$old" != "$APPS/$(basename "$old")" ] || return 0
+  [ -f "$old/Contents/Info.plist" ] || return 0
+  if [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$old/Contents/Info.plist" 2>/dev/null)" = "$bundle" ]; then
+    rm -rf "$old"
+    echo "前の場所の起動ボタンを片付けました: $old"
+  fi
+}
+
 if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
-  APPS="${BB_PREFLIGHT_APPS_DIR:-$HOME/Applications}"
+  if [ -n "${BB_PREFLIGHT_APPS_DIR:-}" ]; then
+    APPS="$BB_PREFLIGHT_APPS_DIR"
+  elif [ -w /Applications ]; then
+    APPS=/Applications
+  else
+    APPS="$HOME/Applications"
+  fi
+  main_app="$APPS/Blackbox Blast Preflight.app"
+  first_time=""
+  [ -e "$main_app" ] || first_time=1
   make_app "Blackbox Blast Preflight" "$HERE/Preflight.command" com.blackboxblast.preflight "$HERE/assets/icon-1024.png"
+  remove_old_app "$HOME/Applications/Blackbox Blast Preflight.app" com.blackboxblast.preflight
   # 専門家向け: 評価エンジンを入れた Mac にだけ、構成図を開く起動ボタンも置く
   if [ -f "$DEST/dist/index.html" ]; then
     make_app "Blackbox Blast Preflight Diagram" "$HERE/Diagram.command" com.blackboxblast.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
+    remove_old_app "$HOME/Applications/Blackbox Blast Preflight Diagram.app" com.blackboxblast.preflight.diagram
+  fi
+  echo "Dock にドラッグしておくと、次からはそこから開けます。"
+  # 初めて置いたときだけ、置いた場所を Finder で見せる
+  if [ -n "$first_time" ] && [ -z "${CI:-}" ] && [ -z "${BB_PREFLIGHT_NO_BROWSER:-}" ]; then
+    open -R "$main_app" || true
   fi
 fi

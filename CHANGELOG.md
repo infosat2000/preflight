@@ -13,7 +13,7 @@
 - ふつうの言葉で読める日英の HTML レポート（NO-GO / CAUTION / CLEAR、ライト・ダーク切り替え）。
 - 直し方の手順、目安の時間、元に戻す方法、AI に頼むための依頼文。
 - 前回の点検との差分（前回の日付つき）。リスク受容などの判断は次回に引き継ぐ。
-- ダブルクリックで動く Preflight.command と、アイコン付きの「Blackbox Blast Preflight.app」。
+- ダブルクリックで動く Preflight.command と、アイコン付きの「Blackbox Blast Preflight.app」。管理者のユーザーなら /Applications に、そうでなければ ~/Applications に置き、初めて置いたときは Finder でその場所を開く。
 - 専門家向けの詳しい情報（report.md / report.en.md）。
 - レポートの中に構成図を描く（つないでくる人 → 入口 → その先。ほかの人が届く道は色を変える）。評価エンジンがなくても見られる。
 - 専門家向けの `Diagram.command` と、その起動ボタン「Blackbox Blast Preflight Diagram.app」（評価エンジンを入れたときだけ置く）: 開くと、最新の構成図を読み込んだ評価エンジンのブラウザ版を、このMacの中だけで開く。
@@ -26,4 +26,6 @@
 - 評価エンジンなしでも動くようにした。点検とレポートは macOS に入っている python3 だけで出る。IPA 17 項目の判定と脅威の一覧が要るときは `./setup.sh --with-engine`。
 
 ### セキュリティ
+- `Diagram.command` の手元のサーバーは、Host が `127.0.0.1` / `localhost` でない要求を断る（DNS リバインディング対策）。構成図は、起動ごとに作る合言葉つきの URL からしか読めない。
+- 平文の鍵の検索で、このツール自身のフォルダを見ない（テスト用の偽の鍵を誤検知していた）。
 - setup.sh は評価エンジンの部品を `npm ci --ignore-scripts` で入れる（install スクリプトを動かさない）。
