@@ -36,7 +36,7 @@ FOREST LIFE* 側のドメインのサブドメインを2つ使います（例）
 - `signup.<ドメイン>`: 申し込みの受け口（この Worker）
 - `send.<ドメイン>`: メールの送り元（Resend）
 
-ドメインは Cloudflare の FOREST LIFE* のアカウントで DNS を管理している必要があります。`wrangler.toml` の `FOREST-LIFE-DOMAIN.example` を書き換えます。
+ドメインは Cloudflare の FOREST LIFE* のアカウントで DNS を管理している必要があります。`wrangler.toml` は `signup.forestlife.dev` と `send.forestlife.dev` で書いてあります（2026-10-13 にドメインを forestlife.dev に決定）。shop など、ほかの用途のサブドメインとは分けます。
 
 ### 2. Resend
 

@@ -6,9 +6,9 @@ main = "src/worker.js"
 compatibility_date = "2026-09-01"
 workers_dev = false   # workers.dev では公開しない。下の routes の独自ドメインだけで受ける
 
-# 受け口のドメイン（FOREST LIFE* 側のドメイン）。決まったら書き換える
+# 受け口のドメイン（FOREST LIFE* 側。forestlife.dev の DNS が FOREST LIFE* の Cloudflare にあること）
 routes = [
-  { pattern = "signup.FOREST-LIFE-DOMAIN.example", custom_domain = true },
+  { pattern = "signup.forestlife.dev", custom_domain = true },
 ]
 
 [[d1_databases]]
@@ -22,10 +22,10 @@ crons = ["17 * * * *"]
 
 [vars]
 SEND_MODE = "dry-run"   # 準備がすべて済んだら最後に "live" にする。それまではメールを送らない
-PUBLIC_BASE = "https://signup.FOREST-LIFE-DOMAIN.example"
+PUBLIC_BASE = "https://signup.forestlife.dev"
 SITE_BASE = "https://blackboxblast.com"
 ALLOWED_ORIGINS = "https://blackboxblast.com"
-MAIL_FROM = "Blackbox Blast（FOREST LIFE*） <preflight@send.FOREST-LIFE-DOMAIN.example>"
+MAIL_FROM = "Blackbox Blast（FOREST LIFE*） <preflight@send.forestlife.dev>"
 MAIL_REPLY_TO = ""
 SENDER_NAME = "FOREST LIFE*"
 SENDER_ADDRESS = ""     # GMO オフィスサポートの住所（FOREST LIFE* 宛てで受け取れると確かめてから）
