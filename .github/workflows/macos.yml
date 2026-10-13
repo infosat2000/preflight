@@ -1,0 +1,50 @@
+# 他人の Mac で README どおりに一から入れて動くかを確かめる（GitHub の macOS 実行環境を「別のMac」として使う）。
+# 実行環境自身を実測するだけで、個人データは使わない。台帳は examples/ のひな形のまま。
+name: macOS fresh install
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fresh-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]  # Apple Silicon
+    runs-on: ${{ matrix.os }}
+    env:
+      RISKSCAPE_HOME: ${{ runner.temp }}/riskscape-home
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Environment
+        run: |
+          sw_vers
+          uname -m
+          /usr/bin/python3 --version
+          node --version
+      - name: setup.sh (fetch and build CyberRiskScape, place example inventory)
+        run: ./setup.sh
+      - name: Unit and CLI integration tests
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: run.sh (first run)
+        run: ./run.sh
+      - name: run.sh (second run, produces a diff)
+        run: ./run.sh
+      - name: Check outputs
+        run: |
+          latest="$(ls -d "$RISKSCAPE_HOME"/out/*/ | sort | tail -1)"
+          for f in report.md ipa-checklist.csv threats.json diff.md facts.json; do
+            test -s "$latest/$f" || { echo "missing $f"; exit 1; }
+          done
+          test "$(stat -f %Lp "$RISKSCAPE_HOME")" = 700
+          grep -q '## 2. 前回との差分' "$latest/report.md"
+          sed -n '1,40p' "$latest/report.md"
