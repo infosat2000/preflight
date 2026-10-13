@@ -5,7 +5,7 @@
 :root{
   --bg:#16191e; --bg-2:#1b1f25; --panel:#20242b; --panel-2:#272c34; --line:#323841; --line-2:#3f4650;
   --ink:#e4e8ec; --ink-strong:#fbfcfd; --muted:#a6b0bb; --dim:#909ba6;
-  --accent:#ff7a1a; --accent-ink:#ff9a4d; --focus:#ffb35c;
+  --accent:#ff7a1a; --accent-ink:#ff9a4d; --focus:#ffb35c; --link:#5eb1ff;
   --red:#ff4d55; --amber:#ffb224; --green:#3ddc84;
   --red-dim:rgba(255,77,85,.15); --amber-dim:rgba(255,178,36,.15); --green-dim:rgba(61,220,132,.13);
   --scope-a:#1d2127; --scope-b:#14171b;
@@ -16,14 +16,14 @@
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
   --bg:#eceef0; --bg-2:#e4e7ea; --panel:#ffffff; --panel-2:#f4f5f7; --line:#d5dade; --line-2:#c3c9cf;
   --ink:#1b1f23; --ink-strong:#0d0f11; --muted:#4f5862; --dim:#68717b;
-  --accent:#e06000; --accent-ink:#a84300; --focus:#b84f00;
+  --accent:#e06000; --accent-ink:#a84300; --focus:#b84f00; --link:#0a5fc2;
   --red:#c8202b; --amber:#9a5a00; --green:#17803f;
   --red-dim:rgba(200,32,43,.10); --amber-dim:rgba(154,90,0,.11); --green-dim:rgba(23,128,63,.10);
   --scope-a:#f7f8f9; --scope-b:#e9ecef; color-scheme:light}}
 :root[data-theme="light"]{
   --bg:#eceef0; --bg-2:#e4e7ea; --panel:#ffffff; --panel-2:#f4f5f7; --line:#d5dade; --line-2:#c3c9cf;
   --ink:#1b1f23; --ink-strong:#0d0f11; --muted:#4f5862; --dim:#68717b;
-  --accent:#e06000; --accent-ink:#a84300; --focus:#b84f00;
+  --accent:#e06000; --accent-ink:#a84300; --focus:#b84f00; --link:#0a5fc2;
   --red:#c8202b; --amber:#9a5a00; --green:#17803f;
   --red-dim:rgba(200,32,43,.10); --amber-dim:rgba(154,90,0,.11); --green-dim:rgba(23,128,63,.10);
   --scope-a:#f7f8f9; --scope-b:#e9ecef; color-scheme:light}
@@ -75,8 +75,8 @@ a{color:var(--accent-ink)}
 .gauge b{display:block;font:700 28px/1.1 var(--mono);font-variant-numeric:tabular-nums}
 .gauge span{font-size:12px;color:var(--muted)}
 .gauge.red b{color:var(--red)} .gauge.yellow b{color:var(--amber)} .gauge.green b{color:var(--green)}
-.to-detail{align-self:flex-start;font-size:13px;color:var(--muted);text-decoration:none;border-bottom:1px dashed var(--line-2)}
-.to-detail:hover{color:var(--accent-ink);border-color:var(--accent)}
+.to-detail{align-self:flex-start;font-size:13.5px;font-weight:600;color:var(--link);text-decoration:none;border-bottom:1px solid currentColor}
+.to-detail:hover{opacity:.8}
 
 /* checklist: every item jumps to its card */
 .checklist{margin:18px 0 6px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
