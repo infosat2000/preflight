@@ -613,6 +613,9 @@ class EasyReportTest(unittest.TestCase):
             self.assertNotRegex(n["label"]["en"], jp, n["label"]["en"])     # tool-made and labelEn names
         self.assertEqual(easy_report.label_en("Bartender 6 :7823（全インターフェース）"), "Bartender 6 :7823 (all interfaces)")
         self.assertEqual(easy_report.label_en("自分のサイト（Cloudflare）"), "自分のサイト (Cloudflare)")  # no labelEn: kept
+        # a system listener whose name collect.py cannot read gets an English name too
+        self.assertEqual(easy_report.label_en("（root 所有・名前不明） :445（全インターフェース）"),
+                         "(root-owned, name unknown) :445 (all interfaces)")
 
     def test_html_is_self_contained_and_escaped(self):
         import easy_report

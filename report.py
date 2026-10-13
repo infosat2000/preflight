@@ -25,6 +25,14 @@ def build(out, lang):
     def T(ja, en):
         return ja if J else en
 
+    def proc(name):
+        # 名前が分からないものは、collect.py が日本語の印を入れている
+        if not J and name.startswith("（root"):
+            return "(root-owned, name unknown)"
+        if not J and name.startswith("（"):
+            return "(unknown name)"
+        return name
+
     with open(os.path.join(out, "facts.json"), encoding="utf-8") as f:
         facts = json.load(f)
     # 評価エンジン（CyberRiskScape）は入れなくても動く。入れていなければ 3・4 節を出さない
@@ -60,7 +68,7 @@ def build(out, lang):
                "- Listening: all interfaces/LAN **%d**, Tailscale only %d, 127.0.0.1 only %d") % (len(wide), len(tail), len(loop)))
     for l in wide:
         L.append(T("  - ⚠ `%s`（PID %s）が `%s` で待ち受け — LAN の他機器から届く可能性",
-                   "  - ⚠ `%s` (PID %s) listens on `%s` — other devices on the LAN may reach it") % (l["process"], l["pid"], l["addr"]))
+                   "  - ⚠ `%s` (PID %s) listens on `%s` — other devices on the LAN may reach it") % (proc(l["process"]), l["pid"], l["addr"]))
     L.append(T("- 公開URL（未認証でアクセスした結果）:", "- Public URLs (result of an unauthenticated request):"))
     mark = {"open": T("公開", "open"), "auth_required": T("認証あり", "login required"),
             "unreachable": T("応答なし", "no response"), "other": T("その他", "other")}

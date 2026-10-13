@@ -955,6 +955,8 @@ LABEL_EN = [
     (r"（送信・書き込み可）", " (can send and write)"),
     (r"^定期ジョブ: ", "Scheduled job: "),
     (r"^平文の鍵の疑い: (.*)（(.*)）$", r"Possible plain-text key: \1 (\2)"),
+    (r"（root 所有・名前不明）", "(root-owned, name unknown)"),
+    (r"（名前不明）", "(unknown name)"),
 ]
 # 台帳の名前を置き換えたあとに、残った全角の括弧などをそろえる
 LABEL_EN_LAST = [(r"（例）", " (example)"), (r"（(.*?)）", r" (\1)")]
