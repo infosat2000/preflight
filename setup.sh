@@ -105,15 +105,23 @@ PLIST
   echo "起動ボタンを置きました: $app"
 }
 
-# 前の版が置いた起動ボタン（前の名前のもの、~/Applications のもの）は、この setup.sh が作ったものだけ片付ける（同じものが2つ並ばないように）
+# 前の版が置いた起動ボタン（前の名前のもの、~/Applications のもの）は、この setup.sh が作ったものだけ片付ける（同じものが2つ並ばないように）。
+# 見分け方はバンドルIDと、起動ファイルに TARGET= の行があること。リポジトリのフォルダを移したあとでも片付く。
+# 使い方: remove_old_app 古い.app 今置いた.app バンドルID...
 remove_old_app() {
-  local old="$1" bundle="$2"
-  [ "$old" != "$APPS/$(basename "$old")" ] || return 0
+  local old="$1" current="$2" id b
+  shift 2
+  [ "$old" != "$current" ] || return 0
   [ -f "$old/Contents/Info.plist" ] || return 0
-  if [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$old/Contents/Info.plist" 2>/dev/null)" = "$bundle" ]; then
-    rm -rf "$old"
-    echo "前の場所の起動ボタンを片付けました: $old"
-  fi
+  grep -q '^TARGET=' "$old/Contents/MacOS/launcher" 2>/dev/null || return 0
+  id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$old/Contents/Info.plist" 2>/dev/null)"
+  for b in "$@"; do
+    if [ "$id" = "$b" ]; then
+      rm -rf "$old"
+      echo "前の起動ボタンを片付けました: $old"
+      return 0
+    fi
+  done
 }
 
 if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
@@ -127,16 +135,16 @@ if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
   main_app="$APPS/Preflight.app"
   first_time=""
   [ -e "$main_app" ] || first_time=1
-  make_app "Preflight" "$HERE/Preflight.command" com.blackboxblast.preflight "$HERE/assets/icon-1024.png"
-  # v0.9.0 までの名前は「Blackbox Blast Preflight」
+  make_app "Preflight" "$HERE/Preflight.command" dev.forestlife.preflight "$HERE/assets/icon-1024.png"
+  # v0.9.0 までの名前は「Blackbox Blast Preflight」、バンドルIDは com.blackboxblast.preflight
   for old in "$APPS/Blackbox Blast Preflight.app" "$HOME/Applications/Blackbox Blast Preflight.app" "$HOME/Applications/Preflight.app"; do
-    remove_old_app "$old" com.blackboxblast.preflight
+    remove_old_app "$old" "$main_app" dev.forestlife.preflight com.blackboxblast.preflight
   done
   # 専門家向け: 評価エンジンを入れた Mac にだけ、構成図を開く起動ボタンも置く
   if [ -f "$DEST/dist/index.html" ]; then
-    make_app "Preflight Diagram" "$HERE/Diagram.command" com.blackboxblast.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
+    make_app "Preflight Diagram" "$HERE/Diagram.command" dev.forestlife.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
     for old in "$APPS/Blackbox Blast Preflight Diagram.app" "$HOME/Applications/Blackbox Blast Preflight Diagram.app" "$HOME/Applications/Preflight Diagram.app"; do
-      remove_old_app "$old" com.blackboxblast.preflight.diagram
+      remove_old_app "$old" "$APPS/Preflight Diagram.app" dev.forestlife.preflight.diagram com.blackboxblast.preflight.diagram
     done
   fi
   echo "Dock にドラッグしておくと、次からはそこから開けます。"

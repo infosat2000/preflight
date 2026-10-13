@@ -60,6 +60,19 @@ jobs:
           uname -m
           /usr/bin/python3 --version
           node --version
+      - name: Old launchers from v0.9.0 (to be cleaned up by setup.sh)
+        run: |
+          # v0.9.0 の名前・バンドルIDで、別の場所を指す起動ボタン（フォルダを移したあとの形）を置く
+          apps=/Applications; [ -w /Applications ] || apps="$HOME/Applications"
+          fake() {
+            mkdir -p "$1/Contents/MacOS"
+            printf '#!/bin/bash\nTARGET=/old/place/Preflight.command\n' > "$1/Contents/MacOS/launcher"
+            printf '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>%s</string></dict></plist>' "$2" > "$1/Contents/Info.plist"
+          }
+          fake "$apps/Blackbox Blast Preflight.app" com.blackboxblast.preflight
+          fake "$apps/Blackbox Blast Preflight Diagram.app" com.blackboxblast.preflight.diagram
+          # バンドルIDが違うものは、同じ名前でも残す
+          fake "$HOME/Applications/Blackbox Blast Preflight.app" com.example.other
       - name: setup.sh (fetch and build CyberRiskScape, place example inventory)
         run: ./setup.sh --with-engine
       - name: Unit and CLI integration tests
@@ -75,6 +88,11 @@ jobs:
           # 管理者のユーザー（GitHub の Mac もそう）なら /Applications、そうでなければ ~/Applications に置かれる
           apps=/Applications; [ -w /Applications ] || apps="$HOME/Applications"
           app="$apps/Preflight.app"
+          # v0.9.0 の起動ボタンは片付き、ほかのアプリは残る
+          test ! -e "$apps/Blackbox Blast Preflight.app"
+          test ! -e "$apps/Blackbox Blast Preflight Diagram.app"
+          test -e "$HOME/Applications/Blackbox Blast Preflight.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = dev.forestlife.preflight
           plutil -lint "$app/Contents/Info.plist"
           # アプリの版は VERSION ファイルと同じ
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$(tr -d '[:space:]' < VERSION)"

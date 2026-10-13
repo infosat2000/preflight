@@ -36,7 +36,7 @@ FOREST LIFE* が作り、[Blackbox Blast](https://blackboxblast.com/) で紹介�
 ## はじめかた
 
 ```bash
-git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-preflight
+git clone <このリポジトリ> preflight && cd preflight
 ./setup.sh      # ~/.bb-preflight/inventory.json にひな形を置き、起動ボタンを置く（python3 だけで動く）
 # ~/.bb-preflight/inventory.json を自分の環境に合わせて書き換える（下の「台帳の書き方」）
 ./run.sh        # 実測 → レポート
