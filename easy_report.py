@@ -173,6 +173,8 @@ def analyze(facts):
             good("sites", "%s は、ログインしないと開けません。" % url)
         elif uid.startswith("old-"):
             good("sites", "やめたサイト %s は、もう応答しません。" % url)
+        elif v == "open":
+            good("sites", "%s は誰でも見られます（公開用のサイトなら正常です）。" % url)
     if facts.get("urls") and not site_issue and not any(o["cat"] == "sites" for o in ok):
         good("sites", "登録した公開サイトに、気になる応答はありませんでした。")
 
@@ -278,9 +280,11 @@ def page(data, standalone=True):
     body = tpl.replace("__PREFLIGHT_DATA__", blob)
     if not standalone:
         return body
+    # 先頭の <title> と <style> は head に置く
+    cut = body.index("</style>") + len("</style>")
     return ('<!doctype html>\n<html lang="ja"><head><meta charset="utf-8">\n'
             '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
-            "</head><body>\n%s\n</body></html>\n" % body)
+            "%s\n</head><body>\n%s\n</body></html>\n" % (body[:cut], body[cut:]))
 
 
 def main():

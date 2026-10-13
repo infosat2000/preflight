@@ -295,6 +295,7 @@ class EasyReportTest(unittest.TestCase):
         self.assertTrue(all(t["how"] for t in d["todo"]))
         self.assertEqual(len(d["checks"]), 6)
         self.assertIn("ファイアウォール（外から勝手につながれるのを防ぐ壁）は有効です。", d["ok"])
+        self.assertIn("https://shop.example.com/ は誰でも見られます（公開用のサイトなら正常です）。", d["ok"])
 
     def test_apple_daemons_are_not_warnings(self):
         import easy_report
@@ -366,6 +367,7 @@ class EasyReportTest(unittest.TestCase):
             with open(os.path.join(cur, "report.html"), encoding="utf-8") as fp:
                 text = fp.read()
             self.assertTrue(text.startswith("<!doctype html>"))
+            self.assertLess(text.index("<title>"), text.index("</head>"))
             self.assertNotIn("__PREFLIGHT_DATA__", text)
             self.assertNotIn("</script><b>", text)       # embedded data cannot break out of the script tag
             self.assertNotRegex(text, r'(src|href)="https?://')  # nothing loads from the network
