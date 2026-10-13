@@ -66,6 +66,14 @@ a{color:var(--accent-ink)}
 .hero > *{min-width:0}
 .scope{aspect-ratio:1/1;max-width:100%}
 .scope canvas{width:100%;height:100%;display:block}
+.scope-wrap{position:relative}
+.rbtn{position:absolute;top:0;right:0;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;
+  border:1px solid var(--line-2);border-radius:4px;background:var(--panel);color:var(--ink);font:inherit;font-size:12px;cursor:pointer}
+.rbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rbtn svg{width:12px;height:12px}
+.rbtn .i-play{display:none}
+.rbtn[aria-pressed="true"] .i-play{display:block}
+.rbtn[aria-pressed="true"] .i-pause{display:none}
 .readout{display:flex;flex-direction:column;gap:12px}
 .code{font:800 44px/1 var(--mono);letter-spacing:.08em}
 .code.red{color:var(--red)} .code.yellow{color:var(--amber)} .code.green{color:var(--green)}
@@ -238,7 +246,14 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
   </div>
 
   <section class="hero">
-    <div class="scope"><canvas id="radar" width="600" height="600" aria-hidden="true"></canvas></div>
+    <div class="scope-wrap">
+      <div class="scope"><canvas id="radar" width="600" height="600" aria-hidden="true"></canvas></div>
+      <button type="button" class="rbtn" id="radar-btn" aria-pressed="false">
+        <svg class="i-pause" viewBox="0 0 12 12" aria-hidden="true"><rect x="2" y="1.5" width="3" height="9" rx="1" fill="currentColor"/><rect x="7" y="1.5" width="3" height="9" rx="1" fill="currentColor"/></svg>
+        <svg class="i-play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.5v9l7.5-4.5z" fill="currentColor"/></svg>
+        <span id="radar-label"></span>
+      </button>
+    </div>
     <div class="readout">
       <div class="eyebrow">Preflight verdict</div>
       <div class="code" id="code"></div>
@@ -344,7 +359,8 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
         "ほかの機器から本当につながるかは試していません。このMacの中から調べています。",
         "「問題なし」は安全の保証ではありません。調べた項目の範囲で問題が見つからなかった、という意味です。",
         "このレポートは、このMacの中だけで作っています。点検結果はどこにも送っていません。"],
-      theme_to_light: "ライトテーマに切り替え", theme_to_dark: "ダークテーマに切り替え"
+      theme_to_light: "ライトテーマに切り替え", theme_to_dark: "ダークテーマに切り替え",
+      radar_stop: "止める", radar_go: "動かす", radar_aria: "レーダーの回転"
     },
     en: {
       demo: "This is a sample. Every result shown is dummy data, not from a real Mac.",
@@ -375,7 +391,8 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
         "It does not test whether other devices can actually connect. It checks from inside this Mac.",
         "\"Fine\" is not a guarantee of safety. It means no problem was found in what was checked.",
         "This report is made only on this Mac. Your results are not sent anywhere."],
-      theme_to_light: "Switch to light theme", theme_to_dark: "Switch to dark theme"
+      theme_to_light: "Switch to light theme", theme_to_dark: "Switch to dark theme",
+      radar_stop: "Stop", radar_go: "Start", radar_aria: "Radar sweep"
     }
   };
   var CODE = { red: "NO-GO", yellow: "CAUTION", green: "CLEAR" };
@@ -561,6 +578,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       $("dg-file").textContent = D.modelPath;
     }
     themeLabel();
+    radarLabel();
   }
 
   Array.prototype.forEach.call(document.querySelectorAll("[data-lang-btn]"), function (b) {
@@ -591,7 +609,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
   function readColors() {
     var css = getComputedStyle(root), v = function (n) { return css.getPropertyValue(n).trim(); };
     C = { red: v("--red"), yellow: v("--amber"), green: v("--green"), accent: v("--accent"), line: v("--line-2"), a: v("--scope-a"), b: v("--scope-b") };
-    if (reduce) draw(0);
+    if (paused) draw(0);
   }
   function norm(a) { a %= 2 * Math.PI; return a < 0 ? a + 2 * Math.PI : a; }
   function hexA(hex, a) {
@@ -619,8 +637,24 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
   }
   cv.addEventListener("click", function (ev) { var b = blipAt(ev); if (b) jump(b.cat); });
   cv.addEventListener("mousemove", function (ev) { cv.style.cursor = blipAt(ev) ? "pointer" : "default"; });
+  // Stop button: the sweep freezes where it is and every blip stays fully lit. The choice is remembered.
+  // Reduced-motion users start stopped and can still start it.
+  var saved_r = store("bb-radar");
+  var paused = saved_r ? saved_r === "stopped" : reduce, phase = reduce ? Math.PI / 4 : 0, last = null, rbtn = $("radar-btn");
+  function radarLabel() {
+    $("radar-label").textContent = paused ? UI[lang].radar_go : UI[lang].radar_stop;
+    rbtn.setAttribute("aria-label", UI[lang].radar_aria + ": " + (paused ? UI[lang].radar_go : UI[lang].radar_stop));
+    rbtn.setAttribute("aria-pressed", String(paused));
+  }
+  rbtn.addEventListener("click", function () {
+    paused = !paused; store("bb-radar", paused ? "stopped" : "running"); radarLabel();
+    if (paused) draw(0); else { last = null; requestAnimationFrame(draw); }
+  });
   function draw(t) {
-    var sweep = reduce ? -Math.PI / 4 : norm(t / 1000 * 1.25 - Math.PI / 2);
+    if (!paused && last !== null) phase += (t - last) / 1000 * 1.25;
+    last = paused ? null : t;
+    var still = paused;
+    var sweep = norm(phase - Math.PI / 2);
     g.clearRect(0, 0, W, W);
     g.save(); g.translate(W / 2, W / 2);
     var face = g.createRadialGradient(0, 0, 0, 0, 0, R);
@@ -646,7 +680,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.cos(sweep) * R, Math.sin(sweep) * R); g.stroke();
     blips.forEach(function (b) {
       var col = C[b.level];
-      var life = reduce ? 1 : Math.max(0.2, 1 - norm(sweep - norm(b.a)) / (2 * Math.PI) * 1.3);
+      var life = still ? 1 : Math.max(0.2, 1 - norm(sweep - norm(b.a)) / (2 * Math.PI) * 1.3);
       var x = Math.cos(b.a) * b.r, y = Math.sin(b.a) * b.r;
       g.globalAlpha = life; g.fillStyle = col; g.shadowColor = col; g.shadowBlur = 24 * life;
       var rad = b.level === "green" ? 8 : 11;
@@ -663,11 +697,11 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       g.beginPath(); g.moveTo(-R * 0.11, 0); g.lineTo(-R * 0.03, R * 0.08); g.lineTo(R * 0.13, -R * 0.08); g.stroke();
     }
     g.restore();
-    if (!reduce) requestAnimationFrame(draw);
+    if (!still) requestAnimationFrame(draw);
   }
 
   render();
   readColors();
-  if (!reduce) requestAnimationFrame(draw);
+  if (paused) draw(0); else requestAnimationFrame(draw);
 })();
 </script>
