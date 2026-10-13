@@ -561,6 +561,18 @@ class EasyReportTest(unittest.TestCase):
         self.assertTrue(all(e[0] in nodes and e[1] in nodes for e in g["edges"]))
         self.assertIsNone(easy_report.diagram({"layers": {"L1": {"nodes": []}}}))
 
+    def test_diagram_has_english_names(self):
+        import easy_report
+        jp = re.compile(r"[\u3040-\u30ff\u4e00-\u9fff]")
+        inv = inventory()
+        g = easy_report.diagram(build.assemble(build.build(inv, facts()), None, facts()["measuredAt"]),
+                                easy_report.inventory_names_en(inv))
+        for n in g["nodes"]:
+            self.assertEqual(set(n["label"]), {"ja", "en"})
+            self.assertNotRegex(n["label"]["en"], jp, n["label"]["en"])     # tool-made and labelEn names
+        self.assertEqual(easy_report.label_en("Bartender 6 :7823（全インターフェース）"), "Bartender 6 :7823 (all interfaces)")
+        self.assertEqual(easy_report.label_en("自分のサイト（Cloudflare）"), "自分のサイト (Cloudflare)")  # no labelEn: kept
+
     def test_html_is_self_contained_and_escaped(self):
         import easy_report
         out = tempfile.mkdtemp()

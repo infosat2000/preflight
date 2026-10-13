@@ -937,7 +937,67 @@ DIAGRAM_COL = {"USER": 0, "SMARTPHONE": 0,
 OUTSIDERS = ("n-lan-other", "n-internet")  # 本人以外がつないでくる起点
 
 
-def diagram(model):
+# 構成図のラベルは評価エンジン向けに日本語で作っている。ツールが付けた部分だけを英語に置き換える
+# （台帳に自分で書いた名前は、そのまま残る）
+LABEL_EN = [
+    (r"^本人$", "You"),
+    (r"^このMac", "This Mac"),
+    (r"（ファイアウォール: 有効）", " (firewall on)"), (r"（ファイアウォール: 無効）", " (firewall off)"),
+    (r"^同じLAN上の他の機器・来訪者$", "Other devices and visitors on the LAN"),
+    (r"^本人の端末（Tailscale 経由）$", "Your devices (via Tailscale)"),
+    (r"^インターネット上の利用者・第三者$", "People on the internet"),
+    (r"随時変わるポート", "changing port"),
+    (r"（127\.0\.0\.1のみ）", " (127.0.0.1 only)"), (r"（Tailscale のみ）", " (Tailscale only)"),
+    (r"（全インターフェース）", " (all interfaces)"),
+    (r"^解約済みのはずの入口が応答: ", "Retired but still answers: "),
+    (r"^Claude Code（このMac・プラグイン (\d+) 個）", r"Claude Code (this Mac, \1 plugins)"),
+    (r"^ローカル MCP: ", "Local MCP: "),
+    (r"（送信・書き込み可）", " (can send and write)"),
+    (r"^定期ジョブ: ", "Scheduled job: "),
+    (r"^平文の鍵の疑い: (.*)（(.*)）$", r"Possible plain-text key: \1 (\2)"),
+]
+# 台帳の名前を置き換えたあとに、残った全角の括弧などをそろえる
+LABEL_EN_LAST = [(r"（例）", " (example)"), (r"（(.*?)）", r" (\1)")]
+
+
+# 台帳の portNames に書くことが多い名前の英語（portNamesEn がなければこれを使う）
+PORT_NAMES_EN = {"22": "Remote Login (SSH)", "88": "Kerberos (for sharing)", "445": "File Sharing (SMB)",
+                 "548": "File Sharing (AFP)", "631": "Printer Sharing (CUPS)", "3283": "Remote Management",
+                 "5900": "Screen Sharing"}
+
+
+def inventory_names_en(inv):
+    """台帳に書いた名前の英語版（labelEn・portNamesEn）を、日本語→英語の組で返す。"""
+    pairs = []
+    if not inv:
+        return pairs
+    en_ports = dict(PORT_NAMES_EN, **(inv.get("portNamesEn") or {}))
+    for port, ja in (inv.get("portNames") or {}).items():
+        if en_ports.get(str(port)):
+            pairs.append((ja, en_ports[str(port)]))
+    items = list(inv.get("publicSites") or []) + list(inv.get("dataStores") or []) + list(inv.get("saas") or [])
+    items += list((inv.get("aiConnectors") or {}).get("items") or [])
+    items += [d["pii"] for d in inv.get("dataStores") or [] if isinstance(d.get("pii"), dict)]
+    mac = inv.get("mac") or {}
+    for x in items + [mac]:
+        if isinstance(x, dict) and x.get("label") and x.get("labelEn"):
+            pairs.append((x["label"], x["labelEn"]))
+    return sorted(pairs, key=lambda p: -len(p[0]))
+
+
+def label_en(ja, names=()):
+    en = ja
+    for pat, rep in LABEL_EN:
+        en = re.sub(pat, rep, en)
+    for a, b in names:
+        if a and a in en:
+            en = en.replace(a, b)
+    for pat, rep in LABEL_EN_LAST:
+        en = re.sub(pat, rep, en)
+    return en
+
+
+def diagram(model, names=()):
     """model.json（自動で作った構成図）を、レポートの中に描ける形にする。ラベルは構成図のまま。"""
     layer = ((model or {}).get("layers") or {}).get("L1") or {}
     nodes = [n for n in layer.get("nodes", []) if n.get("id")]
@@ -945,7 +1005,8 @@ def diagram(model):
         return None
     ids = {n["id"] for n in nodes}
     edges = [e for e in layer.get("edges", []) if e.get("source") in ids and e.get("target") in ids]
-    out = [{"id": n["id"], "label": str(n.get("label") or n["id"]), "type": n.get("type", ""),
+    out = [{"id": n["id"], "label": t(str(n.get("label") or n["id"]), label_en(str(n.get("label") or n["id"]), names)),
+            "type": n.get("type", ""),
             "col": DIAGRAM_COL.get(n.get("type"), 2)} for n in nodes]
     # 外の人がつながれる入口と、そこから先は「ほかの人が届く道」として色を変える
     reach, todo_ids = set(OUTSIDERS) & ids, list(set(OUTSIDERS) & ids)
@@ -1091,8 +1152,17 @@ def main():
     # 専門家向け: 自動で作った構成図を、評価エンジンのブラウザ版で開くための情報
     model = os.path.join(out, "model.json")
     if os.path.exists(model):
+        # 台帳は out/<日時>/ の2つ上（~/.bb-preflight/inventory.json）にある
+        inv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(out))), "inventory.json")
+        inv = None
+        if os.path.exists(inv_path):
+            try:
+                with open(inv_path, encoding="utf-8") as f:
+                    inv = json.load(f)
+            except ValueError:
+                inv = None
         with open(model, encoding="utf-8") as f:
-            data["diagram"] = diagram(json.load(f))
+            data["diagram"] = diagram(json.load(f), inventory_names_en(inv))
     if os.path.exists(model) and os.path.isdir(os.path.join(HERE, "vendor", "CyberRiskScape", "node_modules")):
         data["modelPath"] = os.path.abspath(model)
         data["engineDir"] = os.path.join(HERE, "vendor", "CyberRiskScape")

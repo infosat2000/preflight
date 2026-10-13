@@ -66,6 +66,8 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 
 すでに CyberRiskScape の CLI をビルド済みなら、`CRS_CLI=/path/to/dist-cli/main.js ./setup.sh` で取得を省略できます（`run.sh` にも同じ変数を渡してください）。
 
+英語表示のときの名前は、台帳の各項目に `labelEn` を書くと使われます（`portNamesEn` でポートの名前も）。書かなければ、自分で付けた名前はそのまま出ます。
+
 ## 判断の記録（リスク受容など）
 
 `~/.bb-preflight/model.json` を CyberRiskScape のアプリで開き、「リスク受容」などの判断を記録して同じファイルに保存します。

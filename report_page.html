@@ -360,7 +360,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       e_self: "自分でできる", e_help: "詳しい人か AI に頼むと安心", e_time: "目安 ", undo: "元に戻すには", keep: "このままでよい場合",
       ai_title: "AI に頼む", ai_hint: "Claude Code などにそのまま貼れる依頼文です。鍵の値やファイルの中身は入っていません。",
       credit: "評価エンジン: CyberRiskScape（Apache License 2.0）",
-      s_dg: "構成図", dg_hint: "点検の結果から自動で作った、このMacまわりのつながりです。左がつないでくる人、真ん中が入口、右がその先にあるデータや外部サービスです。名前は台帳と実測のものをそのまま使っています。スマホでは横にずらして見られます。",
+      s_dg: "構成図", dg_hint: "点検の結果から自動で作った、このMacまわりのつながりです。左がつないでくる人、真ん中が入口、右がその先にあるデータや外部サービスです。台帳に自分で書いた名前は、そのまま表示します。スマホでは横にずらして見られます。",
       dg_out: "ほかの人が届く道", dg_in: "本人や、このMacの中だけの道", dg_cols: ["つないでくる人", "入口", "その先"],
       s_map: "入口の地図", map_hint: "このMacにつながる入口が、どこから届くかを示しています。上のレーダーも同じ並びで、中心がこのMac、緑の輪がファイアウォール、外側ほどインターネットに近い場所です。押すと説明に移動します。",
       z_mac: "このMacの中", z_mac_sub: "外からは届かない場所", z_lan: "同じ Wi-Fi・LAN", z_lan_sub: "家・カフェ・職場で同じネットワークにいる人から届く",
@@ -394,7 +394,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       e_self: "You can do this", e_help: "Best done with an expert or an AI", e_time: "Takes ", undo: "To undo", keep: "When it's fine to leave",
       ai_title: "Ask an AI", ai_hint: "A request you can paste straight into Claude Code or similar. It contains no key values or file contents.",
       credit: "Evaluation engine: CyberRiskScape (Apache License 2.0)",
-      s_dg: "Architecture diagram", dg_hint: "How things around this Mac connect, drawn automatically from the check. Left: who connects. Middle: the ways in. Right: the data and outside services behind them. Names come from your inventory and the measurement as they are, so they may be in Japanese. On a phone, swipe sideways to see it all.",
+      s_dg: "Architecture diagram", dg_hint: "How things around this Mac connect, drawn automatically from the check. Left: who connects. Middle: the ways in. Right: the data and outside services behind them. Names you wrote in your inventory are shown as you wrote them. On a phone, swipe sideways to see it all.",
       dg_out: "Paths other people can reach", dg_in: "Paths only you or this Mac use", dg_cols: ["Who connects", "Ways in", "Behind them"],
       s_map: "Entry map", map_hint: "Where each way into this Mac can be reached from. The radar above shows the same thing: this Mac in the centre, the firewall as the green ring, and the internet towards the edge. Tap an item to jump to its explanation.",
       z_mac: "Inside this Mac", z_mac_sub: "Can't be reached from outside", z_lan: "Same Wi-Fi or local network", z_lan_sub: "Reachable by anyone on the same network at home, a cafe or work",
@@ -509,16 +509,20 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     });
     G.nodes.forEach(function (n) {
       var p = xy[n.id], g = mk("g", { "class": "dg-node" + (n.outside ? " out" : ""), transform: "translate(" + p[0] + "," + p[1] + ")" });
-      mk("title", {}, g).textContent = n.label;
+      var name = n.label[lang] || n.label.ja;
+      mk("title", {}, g).textContent = name;
       mk("rect", { width: BW, height: BH, rx: 6 }, g);
       mk("circle", { cx: 14, cy: BH / 2, r: 4, "class": "dot" }, g);
       // up to two lines of about 19 characters; the full name is in the tooltip
-      var L = 19, t1 = n.label.slice(0, L), t2 = n.label.slice(L);
+      // Japanese fits about 19 characters per line, English about 34
+      var jp = /[\u3040-\u30ff\u4e00-\u9fff]/.test(name), L = jp ? 19 : 34, cut = L;
+      if (!jp && name.length > L) { var sp = name.lastIndexOf(" ", L); if (sp > 10) cut = sp; }  // break English at a space
+      var t1 = name.slice(0, cut), t2 = name.slice(cut).replace(/^ /, "");
       if (t2.length > L) t2 = t2.slice(0, L - 1) + "…";
       if (!t2) mk("text", { x: 26, y: BH / 2 + 4 }, g).textContent = t1;
       else { mk("text", { x: 26, y: BH / 2 - 3 }, g).textContent = t1; mk("text", { x: 26, y: BH / 2 + 12 }, g).textContent = t2; }
     });
-    $("dg-desc").textContent = U.s_dg + ": " + G.nodes.map(function (n) { return n.label; }).join(", ");
+    $("dg-desc").textContent = U.s_dg + ": " + G.nodes.map(function (n) { return n.label[lang] || n.label.ja; }).join(", ");
   }
   function renderMap(U) {
     var m = $("map"); m.textContent = "";

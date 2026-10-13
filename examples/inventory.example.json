@@ -1,5 +1,5 @@
 {
-  "_comment": "人が管理する台帳のひな形。実測できないこと（外部サービスの認証方式など）を書く。分からない値は書かない（図では「未入力」になる）。認証方式が不明な線は弱い側の Password にする（隠れるより赤く出る方を選ぶ）。秘密情報の値は絶対に書かない。example.com の行は例なので、自分の環境に合わせて書き換えるか消す。",
+  "_comment": "人が管理する台帳のひな形。実測できないこと（外部サービスの認証方式など）を書く。分からない値は書かない（図では「未入力」になる）。認証方式が不明な線は弱い側の Password にする（隠れるより赤く出る方を選ぶ）。秘密情報の値は絶対に書かない。example.com の行は例なので、自分の環境に合わせて書き換えるか消す。 labelEn は英語表示のときの名前（なくてもよい）。",
   "project": {
     "name": "Mac の実測点検",
     "systemName": "このMac・公開サイト・外部サービス・AIエージェント",
@@ -7,7 +7,8 @@
   },
   "mac": {
     "label": "このMac",
-    "note": ""
+    "note": "",
+    "labelEn": "This Mac"
   },
   "portNames": {
     "22": "リモートログイン(SSH)",
@@ -19,12 +20,29 @@
     "5900": "画面共有",
     "5678": "n8n"
   },
-  "remoteAdminPorts": [22, 3283, 5900, 88, 445, 548, 631],
+  "remoteAdminPorts": [
+    22,
+    3283,
+    5900,
+    88,
+    445,
+    548,
+    631
+  ],
   "ephemeralPortFrom": 49152,
   "endpoints": [
-    {"id": "shop", "url": "https://shop.example.com/"},
-    {"id": "shop-admin", "url": "https://shop.example.com/admin/"},
-    {"id": "old-campaign", "url": "https://old-campaign.example.com/"}
+    {
+      "id": "shop",
+      "url": "https://shop.example.com/"
+    },
+    {
+      "id": "shop-admin",
+      "url": "https://shop.example.com/admin/"
+    },
+    {
+      "id": "old-campaign",
+      "url": "https://old-campaign.example.com/"
+    }
   ],
   "secretScanRoots": [
     "~/Projects",
@@ -34,17 +52,23 @@
     {
       "id": "shop",
       "label": "ショップ（例）",
+      "labelEn": "Shop (example)",
       "endpoint": "shop",
-      "attackSurface": {"hasGlobalIp": true},
+      "attackSurface": {
+        "hasGlobalIp": true
+      },
       "visitorAuth": "None",
       "visitorFlow": "購入者の閲覧・購入"
     },
     {
       "id": "shop-admin",
       "label": "ショップの管理画面（例）",
+      "labelEn": "Shop admin page (example)",
       "endpoint": "shop-admin",
       "admin": true,
-      "attackSurface": {"hasGlobalIp": true},
+      "attackSurface": {
+        "hasGlobalIp": true
+      },
       "authWhenProtected": "Password",
       "visitorFlow": "管理者のログイン"
     }
@@ -54,9 +78,13 @@
       "id": "orders",
       "type": "DATA_STORE",
       "label": "注文データ（例）",
+      "labelEn": "Order data (example)",
       "from": "shop",
       "edgeAuth": "Token",
-      "pii": {"label": "購入者のメールアドレス等"}
+      "pii": {
+        "label": "購入者のメールアドレス等",
+        "labelEn": "Buyers' email addresses, etc."
+      }
     }
   ],
   "saas": [
@@ -64,20 +92,33 @@
       "id": "payments",
       "type": "SAAS",
       "label": "決済サービス（例）",
+      "labelEn": "Payment service (example)",
       "ownerAuth": "Password",
-      "appLinks": [{"from": "shop", "auth": "ApiKey", "flow": "決済・Webhook"}]
+      "appLinks": [
+        {
+          "from": "shop",
+          "auth": "ApiKey",
+          "flow": "決済・Webhook"
+        }
+      ]
     },
     {
       "id": "anthropic",
       "type": "SAAS",
       "label": "Anthropic（Claude）",
+      "labelEn": "Anthropic (Claude)",
       "ownerAuth": "Password"
     }
   ],
   "aiConnectors": {
     "_comment": "claude.ai 側のコネクタなど、ローカル設定に出ないもの。canSend=外部へ送信・書き込みができるもの。",
     "items": [
-      {"id": "mail", "label": "メールのコネクタ（例）", "canSend": true}
+      {
+        "id": "mail",
+        "label": "メールのコネクタ（例）",
+        "labelEn": "Mail connector (example)",
+        "canSend": true
+      }
     ]
   }
 }
