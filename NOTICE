@@ -1,5 +1,5 @@
-Blackbox Blast Preflight
-Copyright 2026 infosat2000
+Preflight (FOREST LIFE*) - Blackbox Blast Edition
+Copyright 2026 FOREST LIFE*
 
 Licensed under the Apache License, Version 2.0. See the LICENSE file.
 
@@ -14,5 +14,5 @@ https://github.com/takashi-ohmoto-git/CyberRiskScape
 CyberRiskScape is not bundled in this repository. setup.sh downloads a pinned
 release (v0.6.0) from its official repository; its own LICENSE and NOTICE
 (including third-party attributions for its threat library) apply to it.
-Blackbox Blast Preflight is an independent project and is not affiliated with or endorsed by
+Preflight is an independent project and is not affiliated with or endorsed by
 the CyberRiskScape project.

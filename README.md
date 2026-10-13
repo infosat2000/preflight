@@ -1,4 +1,4 @@
-# Blackbox Blast Preflight
+# Preflight（FOREST LIFE*）— Blackbox Blast Edition
 
 **Mac の実測結果から脅威モデルを自動で作り、IPA の注意喚起と 221 本の脅威ルールで点検するツール**
 
@@ -6,7 +6,7 @@
 その結果から [CyberRiskScape](https://github.com/takashi-ohmoto-git/CyberRiskScape)（OSS の脅威モデリングツール）の構成図を自動生成して評価します。
 前回との差分を取るので、「知らないうちに増えた入口」に気付けます。
 
-[Blackbox Blast](https://blackboxblast.com/) の点検ツールです。対象は**1人〜数人の事業者が使う Mac 1台**と、それにつながる公開サイト・外部サービスです。
+FOREST LIFE* が作り、[Blackbox Blast](https://blackboxblast.com/) で紹介している点検ツールです（Blackbox Blast Edition）。対象は**1人〜数人の事業者が使う Mac 1台**と、それにつながる公開サイト・外部サービスです。
 
 ## 効くところ・効かないところ
 
@@ -47,7 +47,7 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 
 結果は `~/.bb-preflight/out/<日時>/` に出ます。
 
-ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。`setup.sh` はアイコン付きの起動ボタン「Blackbox Blast Preflight.app」も置くので、Finder の「アプリケーション」・Launchpad・Spotlight からも開けます。管理者のユーザーなら `/Applications`（Finder のサイドバーの「アプリケーション」）に、そうでなければ `~/Applications`（ホームフォルダの中の「アプリケーション」）に置き、初めて置いたときはその場所を Finder で開きます（置きたくない場合は `BB_PREFLIGHT_NO_SHORTCUT=1 ./setup.sh`）。**Dock にドラッグしておくと、次からはそこから開けて便利です。**リポジトリのフォルダを移したら `setup.sh` をもう一度実行してください。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
+ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。`setup.sh` はアイコン付きの起動ボタン「Preflight.app」も置くので、Finder の「アプリケーション」・Launchpad・Spotlight からも開けます。管理者のユーザーなら `/Applications`（Finder のサイドバーの「アプリケーション」）に、そうでなければ `~/Applications`（ホームフォルダの中の「アプリケーション」）に置き、初めて置いたときはその場所を Finder で開きます（置きたくない場合は `BB_PREFLIGHT_NO_SHORTCUT=1 ./setup.sh`）。**Dock にドラッグしておくと、次からはそこから開けて便利です。**リポジトリのフォルダを移したら `setup.sh` をもう一度実行してください。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
 （ZIP でダウンロードした場合は macOS に止められることがあります。そのときは一度開こうとしたあと、システム設定 →「プライバシーとセキュリティ」の「このまま開く」で一度だけ許可してください（macOS 15 からは、右クリック →「開く」では許可できません）。`git clone` で取得した場合は止められません。）
 
 | ファイル | 中身 |
@@ -74,7 +74,7 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 次に `run.sh` を回しても判断は残ります（ノード ID を実測内容から決めているため）。
 
 アプリは github.io のデモではなく、手元で起動してください。構成図を他サイトの保存領域に残さないためです。
-いちばん簡単なのは、「アプリケーション」の **Blackbox Blast Preflight Diagram**（このフォルダの `Diagram.command` と同じ）を開くことです。`./setup.sh --with-engine` で入れたときだけ置かれます。
+いちばん簡単なのは、「アプリケーション」の **Preflight Diagram**（このフォルダの `Diagram.command` と同じ）を開くことです。`./setup.sh --with-engine` で入れたときだけ置かれます。
 最新の構成図を読み込んだ状態で、ブラウザ版が `http://127.0.0.1:4180/` に開きます。このMacの中だけで配り、30 分たつか、ウインドウを閉じると止まります。構成図は弱点の地図なので、ほかのサイトからは読めないようにしています（`127.0.0.1` / `localhost` 以外の名前での要求は断り、起動ごとに作る合言葉がないと構成図を渡しません）。
 
 - 評価エンジンのファイルは書き換えません。ビルド済みの画面を配り、同じ場所に小さな読み込みページを足すだけです。
