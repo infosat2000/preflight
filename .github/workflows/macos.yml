@@ -47,3 +47,15 @@ jobs:
           test "$(stat -f %Lp "$RISKSCAPE_HOME")" = 700
           grep -q '## 2. 前回との差分' "$latest/report.md"
           sed -n '1,40p' "$latest/report.md"
+          {
+            sw_vers; uname -m; /usr/bin/python3 --version; node --version
+            git -C vendor/CyberRiskScape rev-parse HEAD
+          } > "$RUNNER_TEMP/env.txt"
+          cp "$latest/report.md" "$latest/diff.md" "$RUNNER_TEMP/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fresh-install-report
+          path: |
+            ${{ runner.temp }}/env.txt
+            ${{ runner.temp }}/report.md
+            ${{ runner.temp }}/diff.md
