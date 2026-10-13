@@ -50,7 +50,7 @@ def build(out, lang):
 
     L = []
     L.append(T("# 実測点検レポート（%s）", "# Measured check report (%s)") % facts["measuredAt"].replace("T", " "))
-    L.append(T("Blackbox Blast Preflight v%s で作成", "Made with Blackbox Blast Preflight v%s") % version())
+    L.append(T("Preflight（FOREST LIFE*）Blackbox Blast Edition v%s で作成", "Made with Preflight by FOREST LIFE*, Blackbox Blast Edition v%s") % version())
     L.append("")
     if not J and engine:
         L.append("Names that come from the evaluation engine (threats, IPA checklist items, the diff) are kept in the original Japanese.")

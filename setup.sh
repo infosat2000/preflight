@@ -15,7 +15,7 @@ CRS_COMMIT="71834024f8f7ad9c1bc134dfbe2ea330316dbcd6"
 DEST="$HERE/vendor/CyberRiskScape"
 # このツールの版（VERSION ファイルが唯一の置き場所）
 VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
-echo "Blackbox Blast Preflight v$VERSION"
+echo "Preflight（FOREST LIFE*）Blackbox Blast Edition v$VERSION"
 
 WITH_ENGINE="${BB_PREFLIGHT_ENGINE:-}"
 [ "${1:-}" = "--with-engine" ] && WITH_ENGINE=1
@@ -105,7 +105,7 @@ PLIST
   echo "起動ボタンを置きました: $app"
 }
 
-# 前の版が ~/Applications に置いた起動ボタンは、この setup.sh が作ったものだけ片付ける（同じものが2つ並ばないように）
+# 前の版が置いた起動ボタン（前の名前のもの、~/Applications のもの）は、この setup.sh が作ったものだけ片付ける（同じものが2つ並ばないように）
 remove_old_app() {
   local old="$1" bundle="$2"
   [ "$old" != "$APPS/$(basename "$old")" ] || return 0
@@ -124,15 +124,20 @@ if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
   else
     APPS="$HOME/Applications"
   fi
-  main_app="$APPS/Blackbox Blast Preflight.app"
+  main_app="$APPS/Preflight.app"
   first_time=""
   [ -e "$main_app" ] || first_time=1
-  make_app "Blackbox Blast Preflight" "$HERE/Preflight.command" com.blackboxblast.preflight "$HERE/assets/icon-1024.png"
-  remove_old_app "$HOME/Applications/Blackbox Blast Preflight.app" com.blackboxblast.preflight
+  make_app "Preflight" "$HERE/Preflight.command" com.blackboxblast.preflight "$HERE/assets/icon-1024.png"
+  # v0.9.0 までの名前は「Blackbox Blast Preflight」
+  for old in "$APPS/Blackbox Blast Preflight.app" "$HOME/Applications/Blackbox Blast Preflight.app" "$HOME/Applications/Preflight.app"; do
+    remove_old_app "$old" com.blackboxblast.preflight
+  done
   # 専門家向け: 評価エンジンを入れた Mac にだけ、構成図を開く起動ボタンも置く
   if [ -f "$DEST/dist/index.html" ]; then
-    make_app "Blackbox Blast Preflight Diagram" "$HERE/Diagram.command" com.blackboxblast.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
-    remove_old_app "$HOME/Applications/Blackbox Blast Preflight Diagram.app" com.blackboxblast.preflight.diagram
+    make_app "Preflight Diagram" "$HERE/Diagram.command" com.blackboxblast.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
+    for old in "$APPS/Blackbox Blast Preflight Diagram.app" "$HOME/Applications/Blackbox Blast Preflight Diagram.app" "$HOME/Applications/Preflight Diagram.app"; do
+      remove_old_app "$old" com.blackboxblast.preflight.diagram
+    done
   fi
   echo "Dock にドラッグしておくと、次からはそこから開けます。"
   # 初めて置いたときだけ、置いた場所を Finder で見せる

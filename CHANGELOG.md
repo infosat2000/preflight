@@ -3,6 +3,12 @@
 形式は [Keep a Changelog](https://keepachangelog.com/ja/1.1.0/) に、版の付け方は [セマンティック バージョニング](https://semver.org/lang/ja/) に従います。
 1.0.0 を一般公開の版とし、それまでは 0.x で進めます。
 
+## [Unreleased]
+
+### 変更
+- 製品名を「Preflight（FOREST LIFE*）」とし、Blackbox Blast で紹介する版として「Blackbox Blast Edition」と添える。著作権の表示（NOTICE・LICENSE・レポートの末尾）は FOREST LIFE* にそろえる。
+- 起動ボタンの名前を「Preflight.app」「Preflight Diagram.app」に変える。setup.sh を実行すると、前の名前（Blackbox Blast Preflight*.app）のうち、この setup.sh が作ったものは片付ける。データの置き場所（~/.bb-preflight）と環境変数（BB_PREFLIGHT_*）は変えない。
+
 ## [0.9.0] - 2026-10-13
 
 最初の版（非公開）。一般公開（1.0.0）の直前の版として 0.9.0 とする。
