@@ -132,19 +132,19 @@ if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
   else
     APPS="$HOME/Applications"
   fi
-  main_app="$APPS/Preflight.app"
+  main_app="$APPS/BB Preflight.app"
   first_time=""
   [ -e "$main_app" ] || first_time=1
-  make_app "Preflight" "$HERE/Preflight.command" dev.forestlife.preflight "$HERE/assets/icon-1024.png"
-  # v0.9.0 までの名前は「Blackbox Blast Preflight」、バンドルIDは com.blackboxblast.preflight
-  for old in "$APPS/Blackbox Blast Preflight.app" "$HOME/Applications/Blackbox Blast Preflight.app" "$HOME/Applications/Preflight.app"; do
+  make_app "BB Preflight" "$HERE/Preflight.command" dev.forestlife.preflight "$HERE/assets/icon-1024.png"
+  # 前の名前は「Blackbox Blast Preflight」（v0.9.0）と「Preflight」、前のバンドルIDは com.blackboxblast.preflight
+  for old in "$APPS/Blackbox Blast Preflight.app" "$HOME/Applications/Blackbox Blast Preflight.app" "$APPS/Preflight.app" "$HOME/Applications/Preflight.app" "$HOME/Applications/BB Preflight.app"; do
     remove_old_app "$old" "$main_app" dev.forestlife.preflight com.blackboxblast.preflight
   done
   # 専門家向け: 評価エンジンを入れた Mac にだけ、構成図を開く起動ボタンも置く
   if [ -f "$DEST/dist/index.html" ]; then
-    make_app "Preflight Diagram" "$HERE/Diagram.command" dev.forestlife.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
-    for old in "$APPS/Blackbox Blast Preflight Diagram.app" "$HOME/Applications/Blackbox Blast Preflight Diagram.app" "$HOME/Applications/Preflight Diagram.app"; do
-      remove_old_app "$old" "$APPS/Preflight Diagram.app" dev.forestlife.preflight.diagram com.blackboxblast.preflight.diagram
+    make_app "BB Preflight Diagram" "$HERE/Diagram.command" dev.forestlife.preflight.diagram "$HERE/assets/icon-diagram-1024.png"
+    for old in "$APPS/Blackbox Blast Preflight Diagram.app" "$HOME/Applications/Blackbox Blast Preflight Diagram.app" "$APPS/Preflight Diagram.app" "$HOME/Applications/Preflight Diagram.app" "$HOME/Applications/BB Preflight Diagram.app"; do
+      remove_old_app "$old" "$APPS/BB Preflight Diagram.app" dev.forestlife.preflight.diagram com.blackboxblast.preflight.diagram
     done
   fi
   echo "Dock にドラッグしておくと、次からはそこから開けます。"
