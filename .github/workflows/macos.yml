@@ -25,7 +25,7 @@ jobs:
           if command -v node; then echo 'node should not be on PATH'; exit 1; fi
           /usr/bin/python3 --version
       - name: setup.sh (no engine)
-        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor && test ! -e "/Applications/Preflight Diagram.app" && test ! -e "$HOME/Applications/Preflight Diagram.app"
+        run: ./setup.sh | tee "$RUNNER_TEMP/setup.log" && grep -q '評価エンジンは入れません' "$RUNNER_TEMP/setup.log" && test ! -e vendor && test ! -e "/Applications/BB Preflight Diagram.app" && test ! -e "$HOME/Applications/BB Preflight Diagram.app"
       - name: Unit tests
         run: /usr/bin/python3 -m unittest discover -s tests -v
       - name: Launcher, first and second run
@@ -60,6 +60,20 @@ jobs:
           uname -m
           /usr/bin/python3 --version
           node --version
+      - name: Old launchers from v0.9.0 (to be cleaned up by setup.sh)
+        run: |
+          # v0.9.0 の名前・バンドルIDで、別の場所を指す起動ボタン（フォルダを移したあとの形）を置く
+          apps=/Applications; [ -w /Applications ] || apps="$HOME/Applications"
+          fake() {
+            mkdir -p "$1/Contents/MacOS"
+            printf '#!/bin/bash\nTARGET=/old/place/Preflight.command\n' > "$1/Contents/MacOS/launcher"
+            printf '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>%s</string></dict></plist>' "$2" > "$1/Contents/Info.plist"
+          }
+          fake "$apps/Blackbox Blast Preflight.app" com.blackboxblast.preflight
+          fake "$apps/Blackbox Blast Preflight Diagram.app" com.blackboxblast.preflight.diagram
+          fake "$apps/Preflight.app" com.blackboxblast.preflight
+          # バンドルIDが違うものは、同じ名前でも残す
+          fake "$HOME/Applications/Blackbox Blast Preflight.app" com.example.other
       - name: setup.sh (fetch and build CyberRiskScape, place example inventory)
         run: ./setup.sh --with-engine
       - name: Unit and CLI integration tests
@@ -74,14 +88,20 @@ jobs:
           /usr/bin/python3 -c "import json,os,sys;p=os.environ['BB_PREFLIGHT_HOME']+'/inventory.json';d=json.load(open(p));d['mac']['label']='CI Mac';json.dump(d,open(p,'w'),ensure_ascii=False)"
           # 管理者のユーザー（GitHub の Mac もそう）なら /Applications、そうでなければ ~/Applications に置かれる
           apps=/Applications; [ -w /Applications ] || apps="$HOME/Applications"
-          app="$apps/Preflight.app"
+          app="$apps/BB Preflight.app"
+          # v0.9.0 の起動ボタンは片付き、ほかのアプリは残る
+          test ! -e "$apps/Blackbox Blast Preflight.app"
+          test ! -e "$apps/Blackbox Blast Preflight Diagram.app"
+          test ! -e "$apps/Preflight.app"
+          test -e "$HOME/Applications/Blackbox Blast Preflight.app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = dev.forestlife.preflight
           plutil -lint "$app/Contents/Info.plist"
           # アプリの版は VERSION ファイルと同じ
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$(tr -d '[:space:]' < VERSION)"
           test -s "$app/Contents/Resources/AppIcon.icns"
           test -x "$app/Contents/MacOS/launcher"
           # 評価エンジンありの Mac には、構成図の起動ボタンも置かれる
-          dapp="$apps/Preflight Diagram.app"
+          dapp="$apps/BB Preflight Diagram.app"
           plutil -lint "$dapp/Contents/Info.plist"
           test -s "$dapp/Contents/Resources/AppIcon.icns"
           grep -q 'Diagram.command' "$dapp/Contents/MacOS/launcher"

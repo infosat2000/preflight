@@ -36,7 +36,7 @@ FOREST LIFE* が作り、[Blackbox Blast](https://blackboxblast.com/) で紹介�
 ## はじめかた
 
 ```bash
-git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-preflight
+git clone <このリポジトリ> preflight && cd preflight
 ./setup.sh      # ~/.bb-preflight/inventory.json にひな形を置き、起動ボタンを置く（python3 だけで動く）
 # ~/.bb-preflight/inventory.json を自分の環境に合わせて書き換える（下の「台帳の書き方」）
 ./run.sh        # 実測 → レポート
@@ -47,7 +47,7 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 
 結果は `~/.bb-preflight/out/<日時>/` に出ます。
 
-ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。`setup.sh` はアイコン付きの起動ボタン「Preflight.app」も置くので、Finder の「アプリケーション」・Launchpad・Spotlight からも開けます。管理者のユーザーなら `/Applications`（Finder のサイドバーの「アプリケーション」）に、そうでなければ `~/Applications`（ホームフォルダの中の「アプリケーション」）に置き、初めて置いたときはその場所を Finder で開きます（置きたくない場合は `BB_PREFLIGHT_NO_SHORTCUT=1 ./setup.sh`）。**Dock にドラッグしておくと、次からはそこから開けて便利です。**リポジトリのフォルダを移したら `setup.sh` をもう一度実行してください。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
+ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。`setup.sh` はアイコン付きの起動ボタン「BB Preflight.app」も置くので、Finder の「アプリケーション」・Launchpad・Spotlight からも開けます。管理者のユーザーなら `/Applications`（Finder のサイドバーの「アプリケーション」）に、そうでなければ `~/Applications`（ホームフォルダの中の「アプリケーション」）に置き、初めて置いたときはその場所を Finder で開きます（置きたくない場合は `BB_PREFLIGHT_NO_SHORTCUT=1 ./setup.sh`）。**Dock にドラッグしておくと、次からはそこから開けて便利です。**リポジトリのフォルダを移したら `setup.sh` をもう一度実行してください。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
 （ZIP でダウンロードした場合は macOS に止められることがあります。そのときは一度開こうとしたあと、システム設定 →「プライバシーとセキュリティ」の「このまま開く」で一度だけ許可してください（macOS 15 からは、右クリック →「開く」では許可できません）。`git clone` で取得した場合は止められません。）
 
 | ファイル | 中身 |
@@ -74,7 +74,7 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 次に `run.sh` を回しても判断は残ります（ノード ID を実測内容から決めているため）。
 
 アプリは github.io のデモではなく、手元で起動してください。構成図を他サイトの保存領域に残さないためです。
-いちばん簡単なのは、「アプリケーション」の **Preflight Diagram**（このフォルダの `Diagram.command` と同じ）を開くことです。`./setup.sh --with-engine` で入れたときだけ置かれます。
+いちばん簡単なのは、「アプリケーション」の **BB Preflight Diagram**（このフォルダの `Diagram.command` と同じ）を開くことです。`./setup.sh --with-engine` で入れたときだけ置かれます。
 最新の構成図を読み込んだ状態で、ブラウザ版が `http://127.0.0.1:4180/` に開きます。このMacの中だけで配り、30 分たつか、ウインドウを閉じると止まります。構成図は弱点の地図なので、ほかのサイトからは読めないようにしています（`127.0.0.1` / `localhost` 以外の名前での要求は断り、起動ごとに作る合言葉がないと構成図を渡しません）。
 
 - 評価エンジンのファイルは書き換えません。ビルド済みの画面を配り、同じ場所に小さな読み込みページを足すだけです。
