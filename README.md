@@ -41,12 +41,12 @@ git clone <このリポジトリ> blackbox-blast-preflight && cd blackbox-blast-
 
 結果は `~/.bb-preflight/out/<日時>/` に出ます。
 
-ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。`setup.sh` は同じ起動ボタンを `~/Applications/Blackbox Blast Preflight.command` にも置くので、Finder の「アプリケーション」や Spotlight からも開けます（置きたくない場合は `BB_PREFLIGHT_NO_SHORTCUT=1 ./setup.sh`）。リポジトリのフォルダを移したら `setup.sh` をもう一度実行してください。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
+ターミナルを使わない場合は、Finder で **`Preflight.command` をダブルクリック**します。`setup.sh` はアイコン付きの起動ボタン `~/Applications/Blackbox Blast Preflight.app` も置くので、Finder の「アプリケーション」・Launchpad・Spotlight からも開けます（置きたくない場合は `BB_PREFLIGHT_NO_SHORTCUT=1 ./setup.sh`）。Dock に入れておくと便利です。リポジトリのフォルダを移したら `setup.sh` をもう一度実行してください。初回はセットアップして台帳を開き、2 回目以降は実測してレポートを開きます。
 （ZIP でダウンロードした場合は macOS に止められることがあります。そのときは右クリック →「開く」で一度だけ許可してください。`git clone` で取得した場合は止められません。）
 
 | ファイル | 中身 |
 |---|---|
-| `report.md` | 1 枚まとめ（実測結果・IPA 17 項目の判定・未対応の High 以上の脅威） |
+| `report.md` | 1 枚まとめ（実測結果 → 前回との差分 → 参考: IPA 17 項目の判定 → 参考: 未対応の High 以上の脅威） |
 | `ipa-checklist.csv` / `.md` | IPA 注意喚起（2026-10-09）17 項目のチェックリスト |
 | `threats.json` | 検出された全脅威 |
 | `diff.md` | 前回との差分（2 回目以降） |

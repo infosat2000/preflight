@@ -42,14 +42,41 @@ else
   echo "台帳はそのまま使います: $DATA/inventory.json"
 fi
 
-# 起動ボタン: ~/Applications に置く（sudo 不要）。Finder の「アプリケーション」や Spotlight から開ける。
-# 置きたくない場合は BB_PREFLIGHT_NO_SHORTCUT=1 で実行する。
+# 起動ボタン: アイコン付きの「Blackbox Blast Preflight.app」を ~/Applications に置く（sudo 不要）。
+# Finder の「アプリケーション」・Launchpad・Spotlight から開ける。中身は Preflight.command をターミナルで開くだけ。
+# 置きたくない場合は BB_PREFLIGHT_NO_SHORTCUT=1 で実行する。何度実行しても同じものを上書きする。
 if [ -z "${BB_PREFLIGHT_NO_SHORTCUT:-}" ]; then
   APPS="${BB_PREFLIGHT_APPS_DIR:-$HOME/Applications}"
-  SHORTCUT="$APPS/Blackbox Blast Preflight.command"
-  mkdir -p "$APPS"
-  # 本体の場所を埋め込んだ小さな起動ファイル（シンボリックリンクだと本体の場所が分からなくなるため）
-  printf '#!/bin/bash\nexec %q\n' "$HERE/Preflight.command" > "$SHORTCUT"
-  chmod 755 "$SHORTCUT"
-  echo "起動ボタンを置きました: $SHORTCUT"
+  APP="$APPS/Blackbox Blast Preflight.app"
+  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+  # 本体の場所を埋め込む（フォルダを移したら setup.sh をもう一度実行する）
+  printf '#!/bin/bash\nTARGET=%q\nexec open -a Terminal "$TARGET"\n' "$HERE/Preflight.command" > "$APP/Contents/MacOS/launcher"
+  chmod 755 "$APP/Contents/MacOS/launcher"
+  cat > "$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Blackbox Blast Preflight</string>
+  <key>CFBundleDisplayName</key><string>Blackbox Blast Preflight</string>
+  <key>CFBundleIdentifier</key><string>com.blackboxblast.preflight</string>
+  <key>CFBundleExecutable</key><string>launcher</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>LSUIElement</key><true/>
+</dict>
+</plist>
+PLIST
+  # アイコン: リポジトリの 1024px PNG から、macOS 標準の sips と iconutil で .icns を作る
+  ICONSET="$(mktemp -d)/AppIcon.iconset"
+  mkdir -p "$ICONSET"
+  for s in 16 32 128 256 512; do
+    sips -z "$s" "$s" "$HERE/assets/icon-1024.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+    d=$((s * 2))
+    sips -z "$d" "$d" "$HERE/assets/icon-1024.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+  done
+  iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+  touch "$APP"  # Finder にアイコンの更新を知らせる
+  echo "起動ボタンを置きました: $APP"
 fi

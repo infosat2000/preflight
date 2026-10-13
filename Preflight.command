@@ -31,7 +31,7 @@ if ./run.sh 2>&1 | tee "$log"; then
   rm -f "$log"
   if [ -n "$report" ] && [ -f "$report" ]; then
     echo "レポートを開きます: $report"
-    open "$report"
+    open -e "$report"  # テキストエディットで開く（.md の既定アプリが Xcode などの Mac がある）
   fi
   finish 0
 else

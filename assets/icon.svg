@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#26282c"/>
+      <stop offset="1" stop-color="#0c0d0f"/>
+    </linearGradient>
+    <radialGradient id="sweep" cx="512" cy="528" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF6A00" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#FF6A00" stop-opacity="0.55"/>
+    </radialGradient>
+  </defs>
+  <!-- 本体: マットな黒の角丸（macOS のアイコン枠 824px・余白 100px） -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <rect x="102" y="102" width="820" height="820" rx="183" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="4"/>
+  <!-- レーダーの掃引（右上の扇形） -->
+  <path d="M512 528 L512 228 A300 300 0 0 1 812 528 Z" fill="url(#sweep)"/>
+  <line x1="512" y1="528" x2="812" y2="528" stroke="#FF6A00" stroke-opacity="0.7" stroke-width="10" stroke-linecap="round"/>
+  <!-- 内側の細いリングと目盛り（大きいサイズ用の細部） -->
+  <circle cx="512" cy="528" r="190" fill="none" stroke="#FF6A00" stroke-opacity="0.35" stroke-width="14"/>
+  <g stroke="#FF6A00" stroke-opacity="0.6" stroke-width="14" stroke-linecap="round">
+    <line x1="512" y1="168" x2="512" y2="196"/>
+    <line x1="512" y1="860" x2="512" y2="888"/>
+    <line x1="152" y1="528" x2="180" y2="528"/>
+    <line x1="844" y1="528" x2="872" y2="528"/>
+  </g>
+  <!-- 外側の太いリング（16px でも残る） -->
+  <circle cx="512" cy="528" r="300" fill="none" stroke="#FF6A00" stroke-width="58"/>
+  <!-- 太いチェックマーク -->
+  <path d="M378 540 L482 642 L668 430" fill="none" stroke="#FF6A00" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
