@@ -1,0 +1,39 @@
+# Preflight のメール登録（FOREST LIFE* の Cloudflare アカウントに置く Worker）
+# 手順は README.md。秘密の値（API キーなど）はここに書かず、wrangler secret put で入れる。
+
+name = "preflight-signup"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false   # workers.dev では公開しない。下の routes の独自ドメインだけで受ける
+
+# 受け口のドメイン（FOREST LIFE* 側のドメイン）。決まったら書き換える
+routes = [
+  { pattern = "signup.FOREST-LIFE-DOMAIN.example", custom_domain = true },
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "preflight-signup"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"   # wrangler d1 create の結果を入れる
+
+# 1時間に1回、3日後・7日後の案内と、古い記録の片付けをする
+[triggers]
+crons = ["17 * * * *"]
+
+[vars]
+SEND_MODE = "dry-run"   # 準備がすべて済んだら最後に "live" にする。それまではメールを送らない
+PUBLIC_BASE = "https://signup.FOREST-LIFE-DOMAIN.example"
+SITE_BASE = "https://blackboxblast.com"
+ALLOWED_ORIGINS = "https://blackboxblast.com"
+MAIL_FROM = "Blackbox Blast（FOREST LIFE*） <preflight@send.FOREST-LIFE-DOMAIN.example>"
+MAIL_REPLY_TO = ""
+SENDER_NAME = "FOREST LIFE*"
+SENDER_ADDRESS = ""     # GMO オフィスサポートの住所（FOREST LIFE* 宛てで受け取れると確かめてから）
+CONTACT = ""            # 問い合わせ用のメールアドレス
+DOWNLOAD_URL = ""       # ダウンロードの URL（リポジトリを公開する方法が決まってから）
+
+# 秘密の値（wrangler secret put <名前> で入れる）:
+#   RESEND_API_KEY    Resend の API キー（送信だけの権限、このドメインだけ）
+#   TURNSTILE_SECRET  Turnstile のシークレットキー
+#   TOKEN_SECRET      配信停止リンクの署名用。openssl rand -hex 32 で作る
+#   IP_HASH_SALT      IP をハッシュにするときの塩。openssl rand -hex 32 で作る

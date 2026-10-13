@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### 追加
+- メール登録の仕組み（signup/）。FOREST LIFE* の Cloudflare に置く Worker と D1 で、紹介ページの申し込みを受け、Resend で確認メール・ダウンロードの案内・3日後と7日後の案内を送る。SEND_MODE を live にするまでは送らない。手順は signup/README.md。
+
 ### 変更
 - 製品名を「Preflight（FOREST LIFE*）」とし、Blackbox Blast で紹介する版として「Blackbox Blast Edition」と添える。著作権の表示（NOTICE・LICENSE・レポートの末尾）は FOREST LIFE* にそろえる。
 - 起動ボタンの名前を「BB Preflight.app」「BB Preflight Diagram.app」に変える（BB は Blackbox Blast Edition の印）。setup.sh を実行すると、前の名前（Blackbox Blast Preflight*.app、Preflight*.app）のうち、この setup.sh が作ったものは片付ける。データの置き場所（~/.bb-preflight）と環境変数（BB_PREFLIGHT_*）は変えない。
