@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""実測（読み取り専用）: このMacの待ち受け・ファイアウォール・公開URL・AIエージェント周りを調べて facts.json に書く。
+
+- 何も変更しない（kill・設定変更なし）。秘密情報の値は出力しない（ファイル名と件数のみ）。
+- /usr/bin/python3 (3.9) で動く書き方にする（3.10 以降の記法は使わない）。
+
+使い方: python3 collect.py <inventory.json> <out/facts.json>
+"""
+import datetime
+import glob
+import ipaddress
+import json
+import os
+import plistlib
+import re
+import subprocess
+import sys
+
+HOME = os.path.expanduser("~")
+
+
+def run(cmd, timeout=20):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+    except Exception as e:  # noqa: BLE001
+        return "ERROR: %s" % e
+
+
+def classify_addr(addr):
+    """待ち受けアドレスを loopback / tailscale / lan / all に分類する。"""
+    host = addr.rsplit(":", 1)[0].strip("[]")
+    if host in ("*", "0.0.0.0", "::"):
+        return "all"
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return "unknown"
+    if ip.is_loopback:
+        return "loopback"
+    if ip in ipaddress.ip_network("100.64.0.0/10"):
+        return "tailscale"
+    return "lan"
+
+
+def listeners():
+    out = run(["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-F", "pcn"])
+    rows, pid, cmd = [], None, None
+    for line in out.splitlines():
+        if line.startswith("p"):
+            pid = line[1:]
+        elif line.startswith("c"):
+            cmd = line[1:]
+        elif line.startswith("n"):
+            addr = line[1:]
+            port = int(addr.rsplit(":", 1)[1]) if addr.rsplit(":", 1)[1].isdigit() else 0
+            rows.append({"process": cmd, "pid": pid, "addr": addr, "port": port, "scope": classify_addr(addr)})
+    # lsof（root 権限なし）は root 所有の待ち受け（SMB 445・Kerberos 88・CUPS 631・SSH 等）を返さない。
+    # netstat は所有者に関係なく全部見えるので、netstat を正にして lsof でプロセス名を補う。
+    known = {(r["port"], r["scope"]) for r in rows}
+    for line in run(["netstat", "-an", "-p", "tcp"]).splitlines():
+        f = line.split()
+        if len(f) < 6 or f[5] != "LISTEN":
+            continue
+        host, _, p = f[3].rpartition(".")
+        if not p.isdigit():
+            continue
+        addr = "%s:%s" % ("*" if host == "*" else host, p)
+        scope = classify_addr(addr)
+        if (int(p), scope) not in known:
+            known.add((int(p), scope))
+            rows.append({"process": "（root 所有・名前不明）", "pid": "", "addr": addr, "port": int(p), "scope": scope})
+    # 同じ (process, port, scope) は1つにまとめる（IPv4/IPv6 の重複など）
+    seen, uniq = set(), []
+    for r in rows:
+        k = (r["process"], r["port"], r["scope"])
+        if k not in seen:
+            seen.add(k)
+            uniq.append(r)
+    return uniq
+
+
+def probe_lan(ports):
+    """LAN 側の自分の IP に対して、遠隔管理系ポートが実際に開いているかを確かめる。"""
+    ips = [l.split()[1] for l in run(["ifconfig"]).splitlines()
+           if l.strip().startswith("inet ") and classify_addr(l.split()[1] + ":0") == "lan"]
+    res = []
+    for ip in ips[:1]:
+        for p in ports:
+            ok = subprocess.run(["nc", "-z", "-G", "2", ip, str(p)], capture_output=True).returncode == 0
+            res.append({"ip": ip, "port": p, "open": ok})
+    return res
+
+
+def firewall():
+    fw = "/usr/libexec/ApplicationFirewall/socketfilterfw"
+    g = run([fw, "--getglobalstate"])
+    s = run([fw, "--getstealthmode"])
+    return {"enabled": "enabled" in g.lower(), "stealth": "stealth mode is on" in s.lower(), "raw": g.strip()}
+
+
+def probe_urls(endpoints):
+    """公開URLへ未認証でアクセスし、ステータスと転送先だけ記録する（転送は追わない）。"""
+    res = []
+    for ep in endpoints:
+        out = run(["curl", "-s", "-o", "/dev/null", "-m", "10", "-w", "%{http_code} %{redirect_url}", ep["url"]], timeout=15)
+        parts = out.strip().split(" ", 1)
+        code = parts[0] if parts and parts[0].isdigit() else "ERR"
+        loc = parts[1] if len(parts) > 1 else ""
+        if code == "ERR" or code == "000":
+            verdict = "unreachable"
+        elif code in ("401", "403") or "cloudflareaccess.com" in loc or "/cdn-cgi/access" in loc:
+            verdict = "auth_required"
+        elif code.startswith("2"):
+            verdict = "open"
+        else:
+            verdict = "other"
+        res.append({"id": ep["id"], "url": ep["url"], "code": code, "redirect": loc, "verdict": verdict})
+    return res
+
+
+def agents():
+    """AIエージェント周り: ローカル MCP サーバー名、claude を呼ぶ launchd ジョブ、有効プラグイン数。"""
+    mcp = set()
+    plugins = 0
+    for f in [HOME + "/.claude.json", HOME + "/.claude/settings.json"]:
+        try:
+            d = json.load(open(f))
+        except Exception:  # noqa: BLE001
+            continue
+        mcp.update((d.get("mcpServers") or {}).keys())
+        for v in (d.get("projects") or {}).values():
+            mcp.update((v.get("mcpServers") or {}).keys())
+        plugins = max(plugins, len([k for k, v in (d.get("enabledPlugins") or {}).items() if v]))
+    jobs = []
+    for f in sorted(glob.glob(HOME + "/Library/LaunchAgents/*.plist")):
+        try:
+            p = plistlib.load(open(f, "rb"))
+        except Exception:  # noqa: BLE001
+            continue
+        args = " ".join(p.get("ProgramArguments") or [p.get("Program", "")])
+        body = args
+        # 引数のスクリプトが claude を呼ぶかも見る（先頭 64KB のみ）
+        for a in p.get("ProgramArguments") or []:
+            if os.path.isfile(a) and a.endswith((".sh", ".py", ".js")):
+                try:
+                    body += open(a, errors="ignore").read(65536)
+                except Exception:  # noqa: BLE001
+                    pass
+        # パス（~/.claude/ 等）ではなく、実際の呼び出しだけを数える
+        if re.search(r"(^|[\s/\"'`;(])claude\s+(-p|--print)\b|api\.anthropic\.com|anthropic\.Anthropic\(|from anthropic import", body):
+            jobs.append(p.get("Label") or os.path.basename(f))
+    return {"local_mcp_servers": sorted(mcp), "claude_launchd_jobs": jobs, "enabled_plugins": plugins}
+
+
+SECRET_PATTERNS = [
+    ("anthropic", r"sk-ant-[A-Za-z0-9_-]{20,}"),
+    ("github", r"gh[pousr]_[A-Za-z0-9]{30,}"),
+    ("stripe_live", r"[sr]k_live_[A-Za-z0-9]{16,}"),
+    ("aws", r"AKIA[0-9A-Z]{16}"),
+    ("groq", r"gsk_[A-Za-z0-9]{30,}"),
+    ("private_key", r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+]
+
+
+PLACEHOLDER = re.compile(r"x{3,}|X{3,}|your|example|dummy|\.\.\.|\*{3,}", re.I)
+
+
+def secret_scan(roots):
+    """平文の鍵らしき文字列を探す。値は出さず、ファイル名と種類だけ返す。"""
+    hits = []
+    rx = [(n, re.compile(p)) for n, p in SECRET_PATTERNS]
+    exts = (".md", ".txt", ".json", ".yaml", ".yml", ".html", ".js", ".py", ".sh", ".toml")
+    for root in roots:
+        root = os.path.expanduser(root)
+        for dp, dns, fns in os.walk(root):
+            dns[:] = [d for d in dns if d not in ("node_modules", ".git", "dist", "dist-cli", "vendor-CyberRiskScape", "__pycache__",
+                                          "venv", ".venv", "site-packages", "out")]
+            for fn in fns:
+                if not (fn.endswith(exts) or fn.startswith(".env") or fn in (".npmrc", ".netrc", ".pypirc")
+                        or fn.endswith((".token", ".plist", ".env", ".cfg", ".ini", ".conf"))):
+                    continue
+                fp = os.path.join(dp, fn)
+                try:
+                    if os.path.getsize(fp) > 2_000_000:
+                        continue
+                    s = open(fp, errors="ignore").read()
+                except Exception:  # noqa: BLE001
+                    continue
+                kinds = sorted({n for n, r in rx for v in r.findall(s) if not PLACEHOLDER.search(v if isinstance(v, str) else "")})
+                if kinds:
+                    hits.append({"file": fp, "kinds": kinds})
+    return hits
+
+
+def main():
+    inv = json.load(open(sys.argv[1]))
+    facts = {
+        "measuredAt": datetime.datetime.now().isoformat(timespec="seconds"),
+        "listeners": listeners(),
+        "firewall": firewall(),
+        "lanProbe": probe_lan(inv.get("remoteAdminPorts", [])),
+        "urls": probe_urls(inv.get("endpoints", [])),
+        "agents": agents(),
+        "secrets": secret_scan(inv.get("secretScanRoots", [])),
+    }
+    os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
+    json.dump(facts, open(sys.argv[2], "w"), ensure_ascii=False, indent=1)
+    print("listeners=%d urls=%d secrets=%d firewall=%s" % (
+        len(facts["listeners"]), len(facts["urls"]), len(facts["secrets"]), facts["firewall"]["enabled"]))
+
+
+if __name__ == "__main__":
+    main()
