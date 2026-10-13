@@ -931,6 +931,35 @@ def update_findings(u, todo, good):
                    "This is separate from macOS upgrades. Turning it on doesn't change your macOS version")))
 
 
+# 構成図の3列: だれが → 入口（このMac・サイト・AI）→ その先（データ・外部サービス・鍵）
+DIAGRAM_COL = {"USER": 0, "SMARTPHONE": 0,
+               "PC": 1, "FRONT_END_SERVER": 1, "PROCESS": 1, "AGENT": 1}
+OUTSIDERS = ("n-lan-other", "n-internet")  # 本人以外がつないでくる起点
+
+
+def diagram(model):
+    """model.json（自動で作った構成図）を、レポートの中に描ける形にする。ラベルは構成図のまま。"""
+    layer = ((model or {}).get("layers") or {}).get("L1") or {}
+    nodes = [n for n in layer.get("nodes", []) if n.get("id")]
+    if not nodes:
+        return None
+    ids = {n["id"] for n in nodes}
+    edges = [e for e in layer.get("edges", []) if e.get("source") in ids and e.get("target") in ids]
+    out = [{"id": n["id"], "label": str(n.get("label") or n["id"]), "type": n.get("type", ""),
+            "col": DIAGRAM_COL.get(n.get("type"), 2)} for n in nodes]
+    # 外の人がつながれる入口と、そこから先は「ほかの人が届く道」として色を変える
+    reach, todo_ids = set(OUTSIDERS) & ids, list(set(OUTSIDERS) & ids)
+    while todo_ids:
+        cur = todo_ids.pop()
+        for e in edges:
+            if e["source"] == cur and e["target"] not in reach:
+                reach.add(e["target"])
+                todo_ids.append(e["target"])
+    for n in out:
+        n["outside"] = n["id"] in reach
+    return {"nodes": out, "edges": [[e["source"], e["target"], e["source"] in reach] for e in edges]}
+
+
 def present(facts):
     """チェックリストに出す項目。実測できなかったものは出さない。"""
     has = {
@@ -1061,6 +1090,9 @@ def main():
         data["detailPath"] = where
     # 専門家向け: 自動で作った構成図を、評価エンジンのブラウザ版で開くための情報
     model = os.path.join(out, "model.json")
+    if os.path.exists(model):
+        with open(model, encoding="utf-8") as f:
+            data["diagram"] = diagram(json.load(f))
     if os.path.exists(model) and os.path.isdir(os.path.join(HERE, "vendor", "CyberRiskScape", "node_modules")):
         data["modelPath"] = os.path.abspath(model)
         data["engineDir"] = os.path.join(HERE, "vendor", "CyberRiskScape")

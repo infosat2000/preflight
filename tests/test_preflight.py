@@ -550,6 +550,17 @@ class EasyReportTest(unittest.TestCase):
             self.assertIn(x["cat"], cats)                          # every item can jump to a card
             self.assertIn(x["level"], ("red", "yellow", "green"))
 
+    def test_diagram_from_model(self):
+        import easy_report
+        g = easy_report.diagram(build.assemble(build.build(inventory(), facts()), None, facts()["measuredAt"]))
+        nodes = {n["id"]: n for n in g["nodes"]}
+        self.assertEqual((nodes["n-internet"]["col"], nodes["n-site-shop"]["col"], nodes["n-data-orders"]["col"]), (0, 1, 2))
+        self.assertTrue(nodes["n-site-shop"]["outside"] and nodes["n-data-orders"]["outside"])   # reachable from the internet
+        self.assertFalse(nodes["n-loopback-5678"]["outside"])                                    # 127.0.0.1 only
+        self.assertFalse(nodes["n-owner"]["outside"])
+        self.assertTrue(all(e[0] in nodes and e[1] in nodes for e in g["edges"]))
+        self.assertIsNone(easy_report.diagram({"layers": {"L1": {"nodes": []}}}))
+
     def test_html_is_self_contained_and_escaped(self):
         import easy_report
         out = tempfile.mkdtemp()

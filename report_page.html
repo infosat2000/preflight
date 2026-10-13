@@ -189,6 +189,19 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
 @keyframes rise{from{transform:translateY(12px)}to{transform:none}}
 @keyframes lampon{from{opacity:.25;box-shadow:none}}
 @keyframes flash{0%{box-shadow:0 0 0 2px var(--accent)}100%{box-shadow:0 0 0 2px transparent}}
+/* architecture diagram */
+.dgwrap{overflow-x:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.dgwrap svg{display:block;width:100%;min-width:720px;height:auto}
+.dg-col{font:600 11px/1 var(--mono);letter-spacing:.08em;fill:var(--muted);text-transform:uppercase}
+.dg-node rect{fill:var(--panel-2);stroke:var(--line-2);stroke-width:1}
+.dg-node.out rect{stroke:var(--amber);stroke-width:1.5}
+.dg-node text{font:12px/1 var(--font);fill:var(--ink)}
+.dg-node .dot{fill:var(--dim)}
+.dg-node.out .dot{fill:var(--amber)}
+.dg-edge{fill:none;stroke:var(--line-2);stroke-width:1.5}
+.dg-edge.out{stroke:var(--amber);stroke-width:2}
+.dg-edge.skip{stroke-dasharray:4 4;stroke-width:1}
+.legend .ln{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:6px}
 @media (max-width:640px){
   .hero{grid-template-columns:minmax(0,1fr)}
   .scope{max-width:250px;margin:0 auto;width:100%}
@@ -277,6 +290,13 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     <div class="legend"><span><i style="background:var(--red)"></i><span data-i18n="g_red"></span></span><span><i style="background:var(--amber)"></i><span data-i18n="g_yellow"></span></span><span><i style="background:var(--green)"></i><span data-i18n="g_ok"></span></span></div>
   </section>
 
+  <section id="dg-sec" hidden>
+    <h2><span class="eyebrow">Diagram</span><span data-i18n="s_dg"></span></h2>
+    <p class="hint" data-i18n="dg_hint"></p>
+    <div class="dgwrap"><svg id="dg" role="img" aria-labelledby="dg-desc"><desc id="dg-desc"></desc></svg></div>
+    <div class="legend"><span><span class="ln" style="border-color:var(--amber)"></span><span data-i18n="dg_out"></span></span><span><span class="ln" style="border-color:var(--line-2)"></span><span data-i18n="dg_in"></span></span></div>
+  </section>
+
   <section id="todo-sec">
     <h2><span class="eyebrow">Action</span><span data-i18n="s_todo"></span></h2>
     <div class="tasks" id="tasks"></div>
@@ -340,6 +360,8 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       e_self: "自分でできる", e_help: "詳しい人か AI に頼むと安心", e_time: "目安 ", undo: "元に戻すには", keep: "このままでよい場合",
       ai_title: "AI に頼む", ai_hint: "Claude Code などにそのまま貼れる依頼文です。鍵の値やファイルの中身は入っていません。",
       credit: "評価エンジン: CyberRiskScape（Apache License 2.0）",
+      s_dg: "構成図", dg_hint: "点検の結果から自動で作った、このMacまわりのつながりです。左がつないでくる人、真ん中が入口、右がその先にあるデータや外部サービスです。名前は台帳と実測のものをそのまま使っています。スマホでは横にずらして見られます。",
+      dg_out: "ほかの人が届く道", dg_in: "本人や、このMacの中だけの道", dg_cols: ["つないでくる人", "入口", "その先"],
       s_map: "入口の地図", map_hint: "このMacにつながる入口が、どこから届くかを示しています。上のレーダーも同じ並びで、中心がこのMac、緑の輪がファイアウォール、外側ほどインターネットに近い場所です。押すと説明に移動します。",
       z_mac: "このMacの中", z_mac_sub: "外からは届かない場所", z_lan: "同じ Wi-Fi・LAN", z_lan_sub: "家・カフェ・職場で同じネットワークにいる人から届く",
       z_net: "インターネット", z_net_sub: "世界中の誰からでも届く", z_none: "見つかったものはありません",
@@ -372,6 +394,8 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       e_self: "You can do this", e_help: "Best done with an expert or an AI", e_time: "Takes ", undo: "To undo", keep: "When it's fine to leave",
       ai_title: "Ask an AI", ai_hint: "A request you can paste straight into Claude Code or similar. It contains no key values or file contents.",
       credit: "Evaluation engine: CyberRiskScape (Apache License 2.0)",
+      s_dg: "Architecture diagram", dg_hint: "How things around this Mac connect, drawn automatically from the check. Left: who connects. Middle: the ways in. Right: the data and outside services behind them. Names come from your inventory and the measurement as they are, so they may be in Japanese. On a phone, swipe sideways to see it all.",
+      dg_out: "Paths other people can reach", dg_in: "Paths only you or this Mac use", dg_cols: ["Who connects", "Ways in", "Behind them"],
       s_map: "Entry map", map_hint: "Where each way into this Mac can be reached from. The radar above shows the same thing: this Mac in the centre, the firewall as the green ring, and the internet towards the edge. Tap an item to jump to its explanation.",
       z_mac: "Inside this Mac", z_mac_sub: "Can't be reached from outside", z_lan: "Same Wi-Fi or local network", z_lan_sub: "Reachable by anyone on the same network at home, a cafe or work",
       z_net: "Internet", z_net_sub: "Reachable by anyone in the world", z_none: "Nothing found",
@@ -448,6 +472,54 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     net: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>'
   };
 
+  function renderDiagram(U) {
+    var G = D.diagram, svg = $("dg"), NS = "http://www.w3.org/2000/svg";
+    $("dg-sec").hidden = !G;
+    if (!G) return;
+    while (svg.lastChild && svg.lastChild.nodeName !== "desc") svg.removeChild(svg.lastChild);
+    var X = [10, 350, 690], BW = 260, BH = 46, GAP = 10, TOP = 34;
+    var cols = [[], [], []], pos = {};
+    G.nodes.forEach(function (n) { cols[n.col].push(n); });
+    // order each column by where its sources sit, so lines cross less
+    for (var c = 1; c < 3; c++) {
+      cols[c - 1].forEach(function (n, i) { pos[n.id] = i; });
+      var key = function (n) {
+        var ys = G.edges.filter(function (e) { return e[1] === n.id && pos[e[0]] != null; }).map(function (e) { return pos[e[0]]; });
+        return ys.length ? ys.reduce(function (a, b) { return a + b; }, 0) / ys.length : 1e3;
+      };
+      cols[c] = cols[c].map(function (n, i) { return { n: n, k: key(n), i: i }; })
+        .sort(function (a, b) { return a.k - b.k || a.i - b.i; }).map(function (x) { return x.n; });
+      cols[c].forEach(function (n, i) { pos[n.id] = i; });
+    }
+    cols[0].forEach(function (n, i) { pos[n.id] = i; });
+    var xy = {}, rows = 0;
+    cols.forEach(function (col, c) { col.forEach(function (n, i) { xy[n.id] = [X[c], TOP + i * (BH + GAP)]; }); rows = Math.max(rows, col.length); });
+    var H = TOP + rows * (BH + GAP);
+    svg.setAttribute("viewBox", "0 0 960 " + H);
+    function mk(tag, attrs, parent) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); (parent || svg).appendChild(e); return e; }
+    U.dg_cols.forEach(function (t, c) { mk("text", { x: X[c] + 4, y: 14, "class": "dg-col" }).textContent = t; });
+    G.edges.forEach(function (e) {
+      var a = xy[e[0]], b = xy[e[1]];
+      if (!a || !b) return;
+      var x1 = a[0] + BW, y1 = a[1] + BH / 2, x2 = b[0], y2 = b[1] + BH / 2, mx = (x1 + x2) / 2;
+      if (x2 <= x1) { x1 = a[0] + BW / 2; x2 = b[0] + BW / 2; mx = x1; }
+      var skip = b[0] - a[0] > X[1];  // jumps over the middle column: dashed, so it reads as passing behind
+      mk("path", { d: "M" + x1 + " " + y1 + " C" + mx + " " + y1 + " " + mx + " " + y2 + " " + x2 + " " + y2,
+                   "class": "dg-edge" + (e[2] ? " out" : "") + (skip ? " skip" : "") });
+    });
+    G.nodes.forEach(function (n) {
+      var p = xy[n.id], g = mk("g", { "class": "dg-node" + (n.outside ? " out" : ""), transform: "translate(" + p[0] + "," + p[1] + ")" });
+      mk("title", {}, g).textContent = n.label;
+      mk("rect", { width: BW, height: BH, rx: 6 }, g);
+      mk("circle", { cx: 14, cy: BH / 2, r: 4, "class": "dot" }, g);
+      // up to two lines of about 19 characters; the full name is in the tooltip
+      var L = 19, t1 = n.label.slice(0, L), t2 = n.label.slice(L);
+      if (t2.length > L) t2 = t2.slice(0, L - 1) + "…";
+      if (!t2) mk("text", { x: 26, y: BH / 2 + 4 }, g).textContent = t1;
+      else { mk("text", { x: 26, y: BH / 2 - 3 }, g).textContent = t1; mk("text", { x: 26, y: BH / 2 + 12 }, g).textContent = t2; }
+    });
+    $("dg-desc").textContent = U.s_dg + ": " + G.nodes.map(function (n) { return n.label; }).join(", ");
+  }
   function renderMap(U) {
     var m = $("map"); m.textContent = "";
     $("map-sec").hidden = !D.map;
@@ -526,6 +598,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     });
 
     renderMap(U);
+    renderDiagram(U);
 
     // ok list
     var ok = $("ok"); ok.textContent = "";
