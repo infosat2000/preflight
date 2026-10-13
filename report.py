@@ -41,7 +41,7 @@ def build(out, lang):
     L.append(T("Blackbox Blast Preflight v%s で作成", "Made with Blackbox Blast Preflight v%s") % version())
     L.append("")
     if not J:
-        L.append("Names that come from CyberRiskScape (threats, IPA checklist items, the diff) are kept in the original Japanese.")
+        L.append("Names that come from the evaluation engine (threats, IPA checklist items, the diff) are kept in the original Japanese.")
         L.append("")
     L.append(T("## 1. 実測でしか分からないこと（このMac・公開URL）", "## 1. What only measurement can tell (this Mac, public URLs)"))
     L.append("")
@@ -105,12 +105,12 @@ def build(out, lang):
 
     L.append("---")
     L.append("")
-    L.append(T("以下は補助の情報です。CyberRiskScape の脅威ルールは、構成要素の**種類**から一般的に想定される脅威を並べます。"
+    L.append(T("以下は補助の情報です。評価エンジンの脅威ルールは、構成要素の**種類**から一般的に想定される脅威を並べます。"
                "このMacで確かめた問題ではないため、件数の多さは危険度を表しません。上の 1・2 節を優先してください。",
-               "What follows is supporting information. CyberRiskScape's threat rules list threats generally expected for each **kind** of component. "
+               "What follows is supporting information. The evaluation engine's threat rules list threats generally expected for each **kind** of component. "
                "They were not confirmed on this Mac, so a high count does not mean high risk. Give sections 1 and 2 priority."))
     L.append("")
-    L.append(T("## 3. 参考: IPA 注意喚起 17 項目（CyberRiskScape の判定）", "## 3. Reference: IPA alert, 17 items (CyberRiskScape's verdict)"))
+    L.append(T("## 3. 参考: IPA 注意喚起 17 項目（評価エンジンの判定）", "## 3. Reference: IPA alert, 17 items (evaluation engine's verdict)"))
     L.append("")
     L.append(T("集計: %s", "Summary: %s") % summary)
     L.append("")
