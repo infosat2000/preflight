@@ -143,6 +143,7 @@ p.plain{margin:0;color:var(--muted)}
 .detail summary{cursor:pointer;display:inline-flex;align-items:center;gap:8px;font-weight:700;color:var(--ink-strong);
   border:1px solid var(--line-2);border-radius:6px;padding:8px 14px;background:var(--panel-2);list-style:none}
 .detail summary::-webkit-details-marker{display:none}
+.detail .panel p.credit{margin:12px 0 0;font-size:12px;color:var(--dim)}
 .detail summary::before{content:"▸";color:var(--accent);transition:transform .15s}
 .detail details[open] summary::before{transform:rotate(90deg)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.6 var(--mono);color:var(--muted);background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px;max-height:70vh;overflow:auto;margin:12px 0 0}
@@ -246,6 +247,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     <div class="panel">
       <p id="detail-where"></p>
       <details id="detail-box"><summary data-i18n="detail_open"></summary><pre id="detail"></pre></details>
+      <p class="credit" data-i18n="credit"></p>
     </div>
   </section>
   <footer>
@@ -277,6 +279,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       what: "何が起きているか", why: "放っておくと", how: "直し方", p_red: "今すぐ直す", p_yellow: "確認しておく",
       e_self: "自分でできる", e_help: "詳しい人か AI に頼むと安心", e_time: "目安 ", undo: "元に戻すには", keep: "このままでよい場合",
       ai_title: "AI に頼む", ai_hint: "Claude Code などにそのまま貼れる依頼文です。鍵の値やファイルの中身は入っていません。",
+      credit: "評価エンジン: CyberRiskScape（Apache License 2.0）",
       copy: "依頼文をコピー", copied: "コピーしました ✓", copy_fail: "選択しました。⌘C でコピーしてください",
       s_diff_at: function (d) { return "前回の点検（" + d + "）から変わったこと"; },
       measured: "点検日時 ",
@@ -301,6 +304,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       what: "What's happening", why: "If you leave it", how: "How to fix it", p_red: "Fix now", p_yellow: "Check",
       e_self: "You can do this", e_help: "Best done with an expert or an AI", e_time: "Takes ", undo: "To undo", keep: "When it's fine to leave",
       ai_title: "Ask an AI", ai_hint: "A request you can paste straight into Claude Code or similar. It contains no key values or file contents.",
+      credit: "Evaluation engine: CyberRiskScape (Apache License 2.0)",
       copy: "Copy request", copied: "Copied ✓", copy_fail: "Selected. Press ⌘C to copy",
       s_diff_at: function (d) { return "Changes since the last check (" + d + ")"; },
       measured: "Checked ",

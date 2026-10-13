@@ -420,6 +420,7 @@ class EasyReportTest(unittest.TestCase):
             self.assertIn('"prevMeasuredAt": "', text)
             self.assertIn("# Detail in English", text)  # the detail is carried in both languages
             self.assertIn("report.en.md", text)
+            self.assertIn("評価エンジン: CyberRiskScape", text)  # upstream credit stays in the expert section
             self.assertEqual(os.stat(os.path.join(cur, "report.html")).st_mode & 0o777, 0o600)
         finally:
             shutil.rmtree(out)
