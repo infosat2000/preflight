@@ -94,7 +94,8 @@ jobs:
         run: |
           test -s vendor/CyberRiskScape/dist/index.html
           BB_PREFLIGHT_NO_BROWSER=1 /usr/bin/python3 diagram.py > "$RUNNER_TEMP/diagram.log" 2>&1 &
-          sleep 2
+          for i in $(seq 30); do grep -q 't=' "$RUNNER_TEMP/diagram.log" && break; sleep 1; done
+          cat "$RUNNER_TEMP/diagram.log"
           # 起動ごとの合言葉は、ブラウザで開く URL にだけ載る
           t="$(grep -o 't=[A-Za-z0-9_-]*' "$RUNNER_TEMP/diagram.log" | head -1)"
           test -n "$t"

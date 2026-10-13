@@ -133,7 +133,7 @@ def main():
         sys.exit("ポート %d が使われています。前に開いた構成図のターミナルを閉じてから、もう一度開いてください。" % PORT)
     url = "http://127.0.0.1:%d/__preflight/load.html?t=%s" % (PORT, token)
     print("構成図を開きます: %s" % url)
-    print("このMacの中だけで配っています（ほかの機器からは見えません）。終わるときは、このウインドウを閉じます。")
+    print("このMacの中だけで配っています（ほかの機器からは見えません）。終わるときは、このウインドウを閉じます。", flush=True)
     if not os.environ.get("BB_PREFLIGHT_NO_BROWSER"):
         threading.Timer(0.5, webbrowser.open, [url]).start()
     stop = threading.Timer(STOP_AFTER, srv.shutdown)
