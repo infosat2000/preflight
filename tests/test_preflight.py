@@ -246,6 +246,15 @@ class ReportTest(unittest.TestCase):
             # 実測と差分が、一般論の脅威一覧より前に来る
             self.assertLess(text.index("## 1. 実測"), text.index("## 2. 前回との差分"))
             self.assertLess(text.index("## 2. 前回との差分"), text.index("## 3. 参考"))
+            # the English copy has the same sections; CyberRiskScape's own names stay as they are
+            with open(os.path.join(out, "report.en.md"), encoding="utf-8") as fp:
+                en = fp.read()
+            self.assertIn("Firewall: **on**", en)
+            self.assertIn("⚠ admin page opens without login", en)
+            self.assertIn("| ipa-01 外部公開範囲の見直し | 要対応 | 1 | 0 |", en)
+            self.assertLess(en.index("## 1. What only"), en.index("## 2. Changes"))
+            self.assertLess(en.index("## 2. Changes"), en.index("## 3. Reference"))
+            self.assertNotIn("初回のため", en)
         finally:
             shutil.rmtree(out)
 
@@ -362,7 +371,9 @@ class EasyReportTest(unittest.TestCase):
         d = easy_report.build_data(cur, prev)
         texts = [x["label"] for x in d["checks"]] + [o["text"] for o in d["ok"]]
         for x in d["todo"]:
-            texts += [x["title"], x["what"], x["why"], x["how"]]
+            texts += [x["title"], x["what"], x["why"], x["how"]] + x.get("steps", [])
+            texts += [x[k] for k in ("time", "undo", "keep", "askAi") if k in x]
+            self.assertIn(x["effort"], ("self", "help"))
         texts += d["diff"]["better"] + d["diff"]["worse"]
         texts += [o["text"] for o in easy_report.build_data(facts())["ok"]]
         self.assertTrue(d["diff"]["better"] and d["diff"]["worse"])
@@ -390,6 +401,8 @@ class EasyReportTest(unittest.TestCase):
             cur = os.path.join(base, "2026-10-13_100000")
             with open(os.path.join(cur, "report.md"), "w", encoding="utf-8") as fp:
                 fp.write("# 詳細 </script><b>x</b>\n")
+            with open(os.path.join(cur, "report.en.md"), "w", encoding="utf-8") as fp:
+                fp.write("# Detail in English\n")
             sys_argv = sys.argv
             sys.argv = ["easy_report.py", cur]
             try:
@@ -404,6 +417,9 @@ class EasyReportTest(unittest.TestCase):
             self.assertNotIn("</script><b>", text)       # embedded data cannot break out of the script tag
             self.assertNotRegex(text, r'(src|href)="https?://')  # nothing loads from the network
             self.assertIn('"diff": {"better": [], "worse": []}', text)  # previous run was found
+            self.assertIn('"prevMeasuredAt": "', text)
+            self.assertIn("# Detail in English", text)  # the detail is carried in both languages
+            self.assertIn("report.en.md", text)
             self.assertEqual(os.stat(os.path.join(cur, "report.html")).st_mode & 0o777, 0o600)
         finally:
             shutil.rmtree(out)

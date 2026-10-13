@@ -110,6 +110,17 @@ SECRET_KINDS = {
     "private_key": t("秘密鍵", "private key"),
 }
 
+# 「システム設定 → 一般 → 共有」の中で、オフにするスイッチの名前
+SWITCHES = {
+    22: [t("リモートログイン", "Remote Login")],
+    3283: [t("リモートマネージメント", "Remote Management")],
+    5900: [t("画面共有", "Screen Sharing")],
+    445: [t("ファイル共有", "File Sharing")],
+    548: [t("ファイル共有", "File Sharing")],
+    88: [t("ファイル共有", "File Sharing"), t("画面共有", "Screen Sharing")],
+    631: [t("プリンタ共有", "Printer Sharing")],
+}
+
 UNKNOWN_APP = "（名前不明）"
 
 
@@ -138,8 +149,27 @@ def why_loose(hits):
              "It is kept in a plain file, not in a password manager")
 
 
-def finding(cat, level, title, what, why, how):
-    return {"cat": cat, "level": level, "title": title, "what": what, "why": why, "how": how}
+# 直し方の難しさ。self は設定画面をたどるだけで本人ができるもの、help は開発やサーバーの知識がいるもの
+SELF, HELP = "self", "help"
+
+OPEN_SETTINGS = t("画面左上の Apple メニュー から「システム設定」を開きます",
+                  "Open the Apple menu  at the top left and choose System Settings")
+RECHECK = t("直したら、Preflight をもう一度開いて点検します。直っていれば「前回の点検から変わったこと」に出ます",
+            "When you're done, open Preflight again to re-check. If it worked, it shows up under the changes since the last check")
+
+
+STILL_LISTED = t("この方法では待ち受けそのものは残るので、次の点検でも「確認しておく」に出ます。ブロックしてあれば、それで大丈夫です",
+                 "This leaves the app itself listening, so it will still appear under \"Check\" next time. Once it's blocked, that's fine")
+
+
+def finding(cat, level, title, what, why, how, effort=HELP, steps=None, time=None, undo=None, keep=None, ask_ai=None):
+    """1件の指摘。how は直し方の要約、steps は番号付きの手順、time は目安の時間、undo は元に戻す方法、
+    keep は「このままでよい場合」、ask_ai は Claude Code などに貼る依頼文（鍵の値やファイルの中身は入れない）。"""
+    f = {"cat": cat, "level": level, "title": title, "what": what, "why": why, "how": how, "effort": effort}
+    for k, v in (("steps", steps), ("time", time), ("undo", undo), ("keep", keep), ("askAi", ask_ai)):
+        if v:
+            f[k] = v
+    return f
 
 
 def wide_listeners(facts):
@@ -163,6 +193,14 @@ def port_info(p):
                            "System Settings → General → Sharing → turn off any sharing you don't use")))
 
 
+def sharing_switch(p):
+    names = SWITCHES.get(p)
+    if not names:
+        return t("使っていない共有のスイッチを、すべてオフにします", "Turn off every sharing switch you don't use")
+    return t("「%s」のスイッチをオフにします" % "」と「".join(n["ja"] for n in names),
+             "Turn off %s" % " and ".join(n["en"] for n in names))
+
+
 def analyze(facts):
     """facts から、やること（赤・黄）と、確認できて問題なかったこと（緑）を作る。
 
@@ -184,7 +222,13 @@ def analyze(facts):
             t("同じ Wi-Fi にいる人（カフェ・ホテル・コワーキングなど）から、このMacの入口に直接つながれます。",
               "People on the same Wi-Fi (at a cafe, hotel or shared office) can connect straight to this Mac."),
             t("システム設定 → ネットワーク → ファイアウォール → オン",
-              "System Settings → Network → Firewall → turn it on")))
+              "System Settings → Network → Firewall → turn it on"),
+            SELF, [OPEN_SETTINGS,
+                   t("左の一覧で「ネットワーク」を選びます", "Choose Network in the list on the left"),
+                   t("「ファイアウォール」を押して、スイッチをオンにします", "Click Firewall and turn the switch on"),
+                   RECHECK],
+            time=t("約1分", "About 1 min"),
+            undo=t("同じスイッチをオフにすれば元に戻ります", "Turn the same switch off to undo it")))
 
     ports = open_admin_ports(facts)
     for p in ports:
@@ -197,7 +241,15 @@ def analyze(facts):
               "%s on this Mac is open, so others on your Wi-Fi or local network can connect to it." % name["en"]),
             t(why["ja"] + "使っていないなら閉じておくのが安全です。",
               why["en"] + " If you don't use it, it is safer to turn it off."),
-            how))
+            how, SELF, [OPEN_SETTINGS,
+                        t("左の一覧で「一般」を選び、右の「共有」を押します",
+                          "Choose General in the list on the left, then click Sharing"),
+                        sharing_switch(p),
+                        RECHECK],
+            time=t("約1分", "About 1 min"),
+            undo=t("同じスイッチをオンにすれば元に戻ります", "Turn the same switch back on to undo it"),
+            keep=t("ほかの Mac から、この機能を自分で使っているなら、そのままで構いません",
+                   "If you use this feature yourself from another Mac, you can leave it on")))
     if facts.get("lanProbe") and not ports:
         good("ports", t("リモートログイン・画面共有・ファイル共有などの遠隔操作の入口は、すべて閉じています。",
                         "Remote Login, Screen Sharing, File Sharing and other ways in from afar are all closed."))
@@ -235,7 +287,28 @@ def analyze(facts):
                        "For any you don't recognize, open that app's settings and turn off options like "
                        "\"network\", \"remote\" or \"phone link\". "
                        "If it is a server you built, make it listen on 127.0.0.1 (this Mac only)."),
-                     extra)))
+                     extra),
+            SELF, [t("上のアプリ名を見て、使っていないアプリがないか確かめます",
+                     "Look at the app names above and find any you don't use"),
+                   t("使っていないアプリは終了して、「アプリケーション」フォルダからゴミ箱に入れます",
+                     "Quit apps you don't use and drag them from the Applications folder to the Trash"),
+                   t("使うけれど、ほかの機器からつながる必要はないアプリは、システム設定 → ネットワーク → ファイアウォール →「オプション…」を開きます",
+                     "For apps you use but that don't need connections from other devices, open "
+                     "System Settings → Network → Firewall → Options…"),
+                   t("「＋」でそのアプリを追加し、「外部からの接続をブロック」にします",
+                     "Click + to add the app, then set it to \"Block incoming connections\""),
+                   STILL_LISTED],
+            time=t("約5分", "About 5 min"),
+            undo=t("同じ画面でアプリを選び「外部からの接続を許可」に戻します。ゴミ箱に入れたアプリは、ゴミ箱から戻せます",
+                   "In the same window, set the app back to \"Allow incoming connections\". Apps in the Trash can be put back"),
+            keep=t("スマホ連携など、ほかの機器から使う機能が必要なアプリは、そのままで大丈夫です",
+                   "Apps whose features you use from other devices, like linking to your phone, are fine as they are"),
+            ask_ai=t("このMacで、次のアプリが同じネットワークの他の機器から接続を受け付けています: %s。"
+                     "それぞれ何のために待ち受けているか調べてください。自分で作ったサーバーなら、待ち受け先を 127.0.0.1 に変えて動作確認してください。"
+                     "市販のアプリなら設定は変えずに、私が何をすればよいかだけ教えてください。" % join(unknown)["ja"],
+                     "On this Mac, these apps accept connections from other devices on the network: %s. "
+                     "Find out what each one is listening for. If one is a server I built, change it to listen on 127.0.0.1 "
+                     "and check that it still works. If it is a regular app, don't change anything; just tell me what I should do." % join(unknown)["en"])))
     elif "listeners" in facts:
         good("apps", t("外からつながれる状態の、心当たりのないアプリはありませんでした。",
                        "No unfamiliar apps can be reached from outside."))
@@ -262,7 +335,13 @@ def analyze(facts):
                   "If anyone can get into the admin page, they can change your site or take your customers' information."),
                 t("管理画面にパスワードと二段階認証をかけるか、Cloudflare Access などで自分だけが入れるようにします。",
                   "Protect the admin page with a password and two-step sign-in, "
-                  "or use a service like Cloudflare Access so only you can get in.")))
+                  "or use a service like Cloudflare Access so only you can get in."),
+                time=t("30分〜", "30 min or more"),
+                ask_ai=t("%s の管理画面が、ログインなしで開きます。どこで動いているサイトか調べ、"
+                         "パスワードと二段階認証をかけるか、Cloudflare Access などで私だけが入れるようにする手順を、私の環境に合わせて教えてください。" % url,
+                         "The admin page at %s opens without a login. Find out where the site is hosted, and tell me the steps, "
+                         "for my setup, to protect it with a password and two-step sign-in or to let only me in with "
+                         "something like Cloudflare Access." % url)))
         elif uid.startswith("old-") and v != "unreachable":
             site_issue = True
             todo.append(finding(
@@ -272,7 +351,12 @@ def analyze(facts):
                 t("放っておいた古いサイトは更新されず、乗っ取りや偽サイトの入口になりやすいです。",
                   "Old sites that are left alone don't get updates. They are easy to take over or turn into fake sites."),
                 t("サーバーやドメインの管理画面で、そのサイトを止めるか削除します。",
-                  "Stop or delete the site in your server or domain control panel.")))
+                  "Stop or delete the site in your server or domain control panel."),
+                time=t("15分〜", "15 min or more"),
+                ask_ai=t("もう使っていないはずの %s が、まだ応答します。どのサーバーやサービスで動いているか調べ、"
+                         "止める手順を教えてください。止める前に、残しておくべきデータがないかも確かめてください。" % url,
+                         "%s should no longer be in use, but it still responds. Find out which server or service runs it and "
+                         "tell me how to stop it. Before stopping it, check whether any data should be kept." % url)))
         elif "admin" in uid and v == "auth_required":
             good("sites", t("%s は、ログインしないと開けません。" % url,
                             "%s can't be opened without logging in." % url))
@@ -308,7 +392,16 @@ def analyze(facts):
               "GitHub に上げたことがある鍵は、作り直してください。",
               "Turn off keys you don't use in that service's dashboard. Move keys you do use into a password manager "
               "or Keychain, and delete them from the file. "
-              "If a key was ever pushed to GitHub, make a new one.")))
+              "If a key was ever pushed to GitHub, make a new one."),
+            time=t("30分〜", "30 min or more"),
+            ask_ai=t("次のファイルに API キーなどの鍵がそのまま書かれています: %s。鍵の値は画面に表示しないでください。"
+                     "使っている鍵は macOS のキーチェーンから読む形に変え、ファイルからは消してください。"
+                     "そのファイルが Git に記録されたり GitHub に上がったりしたことがないかも確かめ、あれば鍵の作り直しが必要か教えてください。"
+                     "最後に、元のプログラムが動くか確かめてください。" % files["ja"],
+                     "These files have API keys or other secrets written in plain text: %s. Don't show the key values on screen. "
+                     "For keys that are in use, change the code to read them from the macOS Keychain and remove them from the file. "
+                     "Check whether the file was ever committed to Git or pushed to GitHub, and if so, tell me whether I need new keys. "
+                     "Finally, check that the original program still works." % files["en"])))
     if tidy:
         kinds, files = join(key_kinds(tidy)), join([same(h["file"]) for h in tidy])
         todo.append(finding(
@@ -323,7 +416,16 @@ def analyze(facts):
               "But if you copy the file or let an AI tool read the folder, the key goes along with it."),
             t("使っていない鍵は、そのサービスの管理画面で無効にします。大事な鍵は、パスワード管理アプリやキーチェーンに移すとより安全です。",
               "Turn off keys you don't use in that service's dashboard. "
-              "Important keys are safer in a password manager or Keychain.")))
+              "Important keys are safer in a password manager or Keychain."),
+            time=t("30分〜", "30 min or more"),
+            keep=t("自分の開発用で、このフォルダをコピーしたり AI に丸ごと読ませたりしないなら、このままで構いません",
+                   "If it's for your own development and you don't copy the folder or let an AI read all of it, you can leave it"),
+            ask_ai=t("次の .env ファイルに API キーが書かれています: %s。鍵の値は画面に表示しないでください。"
+                     "使っていない鍵があれば教えてください。使っている鍵は macOS のキーチェーンから読む形に変え、"
+                     "変えたあとにプログラムが動くか確かめてください。" % files["ja"],
+                     "These .env files have API keys in them: %s. Don't show the key values on screen. "
+                     "Tell me if any key looks unused. For keys in use, change the code to read them from the macOS Keychain, "
+                     "then check that the program still works." % files["en"])))
     if not secrets:
         good("keys", t("API キーなどの鍵が、調べた範囲のファイルにそのまま書かれてはいませんでした。",
                        "No API keys or other secrets were found written in plain text in the files we checked."))
@@ -340,9 +442,27 @@ def analyze(facts):
             t("自分で作ったものなら問題ありません。覚えのないものは、知らないうちに AI がファイルを読んだり外へ送ったりしているかもしれません。",
               "If you set them up yourself, that's fine. If you don't recognize one, an AI may be reading your files "
               "or sending them out without you knowing."),
-            t("覚えのないものがあれば、~/Library/LaunchAgents の中の同じ名前のファイルを確かめ、不要なら止めます。",
-              "If you don't recognize one, look for the file with the same name in ~/Library/LaunchAgents, "
-              "and turn it off if you don't need it.")))
+            t("覚えのないものは、システム設定 → 一般 → ログイン項目と機能拡張 で、バックグラウンドでの実行を止めます。",
+              "For any you don't recognize, stop it from running in the background in "
+              "System Settings → General → Login Items & Extensions."),
+            SELF, [OPEN_SETTINGS,
+                   t("左の一覧で「一般」を選び、右の「ログイン項目と機能拡張」を押します",
+                     "Choose General in the list on the left, then click Login Items & Extensions"),
+                   t("「バックグラウンドでの実行を許可」の一覧から、上の名前に近い項目を探します",
+                     "In the \"Allow in the Background\" list, find the items that match the names above"),
+                   t("覚えのないものは、スイッチをオフにします", "Turn off the switch for any you don't recognize"),
+                   t("止めても設定ファイルは残るので、次の点検でも「確認しておく」に出ます。止めてあれば、それで大丈夫です",
+                     "The setting file stays even after you turn it off, so it will still appear under \"Check\" next time. "
+                     "Once it's off, that's fine")],
+            time=t("約5分", "About 5 min"),
+            undo=t("同じスイッチをオンにすれば元に戻ります", "Turn the same switch back on to undo it"),
+            keep=t("自分で作った仕組みなら、そのままで大丈夫です", "If you set them up yourself, they are fine as they are"),
+            ask_ai=t("このMacの ~/Library/LaunchAgents に、Claude を自動で呼び出す仕組みが登録されています: %s。"
+                     "それぞれ、いつ・何を読んで・どこへ送っているかを調べて、ふつうの言葉で説明してください。止めるかどうかは私が決めるので、まだ何も変えないでください。"
+                     % join([same(j) for j in jobs])["ja"],
+                     "On this Mac, ~/Library/LaunchAgents has jobs that start Claude automatically: %s. "
+                     "For each one, find out when it runs, what it reads and where it sends things, and explain it in plain words. "
+                     "I will decide whether to stop them, so don't change anything yet." % join([same(j) for j in jobs])["en"])))
     else:
         good("ai", t("AI を自動で呼び出す仕組みは、見つかりませんでした。",
                      "Nothing was found that starts AI on its own."))
@@ -416,6 +536,7 @@ def build_data(facts, prev=None, detail=""):
         "todo": todo,
         "ok": ok,
         "diff": changes(prev, facts) if prev else None,
+        "prevMeasuredAt": prev.get("measuredAt", "").replace("T", " ")[:16] if prev else "",
         "detail": detail,
     }
 
@@ -439,14 +560,17 @@ def main():
     out = sys.argv[1]
     with open(os.path.join(out, "facts.json"), encoding="utf-8") as f:
         facts = json.load(f)
-    detail = ""
-    md = os.path.join(out, "report.md")
-    if os.path.exists(md):
-        with open(md, encoding="utf-8") as f:
-            detail = f.read()
-    data = build_data(facts, previous_facts(out), detail)
-    if detail:
-        data["detailPath"] = os.path.abspath(md)
+    # 詳しい情報は report.py が書いた日本語版と英語版を、言語ごとに入れる
+    detail, where = {}, {}
+    for lang, name in (("ja", "report.md"), ("en", "report.en.md")):
+        md = os.path.join(out, name)
+        if os.path.exists(md):
+            with open(md, encoding="utf-8") as f:
+                detail[lang] = f.read()
+            where[lang] = os.path.abspath(md)
+    data = build_data(facts, previous_facts(out), detail or "")
+    if where:
+        data["detailPath"] = where
     path = os.path.join(out, "report.html")
     # 中身は自分の弱点の地図なので、run.sh の外から呼ばれても本人しか読めないようにする
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)

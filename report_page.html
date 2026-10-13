@@ -14,19 +14,19 @@
   color-scheme:dark;
 }
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
-  --bg:#eceef0; --bg-2:#e4e7ea; --panel:#ffffff; --panel-2:#f4f5f7; --line:#d5dade; --line-2:#c3c9cf;
-  --ink:#1b1f23; --ink-strong:#0d0f11; --muted:#4f5862; --dim:#68717b;
+  --bg:#dcdfe3; --bg-2:#d3d7dc; --panel:#eceef1; --panel-2:#e2e5e9; --line:#c5cad1; --line-2:#b2b9c2;
+  --ink:#1b1f23; --ink-strong:#0d0f11; --muted:#4a525c; --dim:#5a636d;
   --accent:#e06000; --accent-ink:#a84300; --focus:#b84f00; --link:#0a5fc2;
   --red:#c8202b; --amber:#9a5a00; --green:#17803f;
   --red-dim:rgba(200,32,43,.10); --amber-dim:rgba(154,90,0,.11); --green-dim:rgba(23,128,63,.10);
-  --scope-a:#f7f8f9; --scope-b:#e9ecef; color-scheme:light}}
+  --scope-a:#e6e9ec; --scope-b:#d5d9de; color-scheme:light}}
 :root[data-theme="light"]{
-  --bg:#eceef0; --bg-2:#e4e7ea; --panel:#ffffff; --panel-2:#f4f5f7; --line:#d5dade; --line-2:#c3c9cf;
-  --ink:#1b1f23; --ink-strong:#0d0f11; --muted:#4f5862; --dim:#68717b;
+  --bg:#dcdfe3; --bg-2:#d3d7dc; --panel:#eceef1; --panel-2:#e2e5e9; --line:#c5cad1; --line-2:#b2b9c2;
+  --ink:#1b1f23; --ink-strong:#0d0f11; --muted:#4a525c; --dim:#5a636d;
   --accent:#e06000; --accent-ink:#a84300; --focus:#b84f00; --link:#0a5fc2;
   --red:#c8202b; --amber:#9a5a00; --green:#17803f;
   --red-dim:rgba(200,32,43,.10); --amber-dim:rgba(154,90,0,.11); --green-dim:rgba(23,128,63,.10);
-  --scope-a:#f7f8f9; --scope-b:#e9ecef; color-scheme:light}
+  --scope-a:#e6e9ec; --scope-b:#d5d9de; color-scheme:light}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html{background:var(--bg);scroll-behavior:smooth;scroll-padding-top:76px}
@@ -109,6 +109,21 @@ h2 .eyebrow{color:var(--accent-ink)}
 .task dd{margin:0;overflow-wrap:anywhere}
 .task dd.fix{font-weight:600;color:var(--ink-strong)}
 .task dd.fix::before{content:"→ ";color:var(--accent)}
+.effort{display:flex;flex-wrap:wrap;gap:6px 12px;margin:8px 0 0;font-size:12.5px;color:var(--muted)}
+.effort b{font-weight:700;border:1px solid var(--line-2);border-radius:999px;padding:1px 9px}
+.effort b.self{color:var(--green);border-color:color-mix(in srgb,var(--green) 50%,transparent)}
+.effort b.help{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+ol.steps{margin:0;padding-left:1.5em;font-weight:600;color:var(--ink-strong)}
+ol.steps li{margin:2px 0}
+ol.steps li::marker{color:var(--accent);font-family:var(--mono)}
+.task dd.note{color:var(--muted);font-size:14px}
+.ask{margin-top:14px;border:1px dashed var(--line-2);border-radius:8px;padding:12px 14px;background:var(--panel-2)}
+.ask .ask-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;justify-content:space-between}
+.ask .ask-h span{font-weight:700;color:var(--ink-strong)}
+.ask p{margin:4px 0 8px;font-size:13px;color:var(--muted)}
+.ask .prompt{font:13px/1.65 var(--font);color:var(--ink);background:var(--bg-2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-wrap:anywhere}
+.copy{font:600 13px/1 var(--font);color:var(--ink-strong);background:var(--panel);border:1px solid var(--line-2);border-radius:6px;padding:8px 12px;cursor:pointer}
+.copy:hover{border-color:var(--accent)}
 
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
 .list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
@@ -131,7 +146,10 @@ p.plain{margin:0;color:var(--muted)}
 .detail summary::before{content:"▸";color:var(--accent);transition:transform .15s}
 .detail details[open] summary::before{transform:rotate(90deg)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/1.6 var(--mono);color:var(--muted);background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:14px;max-height:70vh;overflow:auto;margin:12px 0 0}
-footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing:.06em}
+footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font:11px/1.6 var(--mono);color:var(--dim);letter-spacing:.06em}
+footer .mark{display:flex;align-items:center;gap:8px;margin-top:10px;font:12px/1.5 var(--font);letter-spacing:0;color:var(--muted)}
+footer .mark svg{width:18px;height:18px;flex:none}
+footer .mark b{color:var(--ink-strong);font-weight:700}
 
 @keyframes rise{from{transform:translateY(12px)}to{transform:none}}
 @keyframes lampon{from{opacity:.25;box-shadow:none}}
@@ -208,7 +226,7 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
   </section>
 
   <section>
-    <h2><span class="eyebrow">Delta</span><span data-i18n="s_diff"></span></h2>
+    <h2><span class="eyebrow">Delta</span><span data-i18n="s_diff" id="s-diff"></span></h2>
     <div class="panel" id="diff"></div>
   </section>
 
@@ -229,7 +247,13 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
       <details id="detail-box"><summary data-i18n="detail_open"></summary><pre id="detail"></pre></details>
     </div>
   </section>
-  <footer>BLACKBOX BLAST PREFLIGHT · RULE-BASED · NOTHING LEAVES THIS MAC</footer>
+  <footer>
+    <div>BLACKBOX BLAST PREFLIGHT · RULE-BASED · NOTHING LEAVES THIS MAC</div>
+    <div class="mark" lang="en">
+      <svg viewBox="0 0 116 116" aria-hidden="true"><rect width="116" height="116" rx="22" fill="#ff7a1a"/><rect x="36" y="36" width="44" height="44" rx="7" fill="#0c0d0f"/></svg>
+      <span><b>Blackbox Blast™</b> · © 2026 Blackbox Blast. All rights reserved.</span>
+    </div>
+  </footer>
 </div>
 
 <script id="preflight-data" type="application/json">__PREFLIGHT_DATA__</script>
@@ -250,6 +274,10 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
       s_todo: "やること", s_diff: "前回の点検から変わったこと", s_ok: "確認できて、問題なかったこと",
       s_limits: "この点検で分からないこと", s_detail: "詳しい情報（専門家向け）", detail_open: "詳しい情報をひらく",
       what: "何が起きているか", why: "放っておくと", how: "直し方", p_red: "今すぐ直す", p_yellow: "確認しておく",
+      e_self: "自分でできる", e_help: "詳しい人か AI に頼むと安心", e_time: "目安 ", undo: "元に戻すには", keep: "このままでよい場合",
+      ai_title: "AI に頼む", ai_hint: "Claude Code などにそのまま貼れる依頼文です。鍵の値やファイルの中身は入っていません。",
+      copy: "依頼文をコピー", copied: "コピーしました ✓", copy_fail: "選択しました。⌘C でコピーしてください",
+      s_diff_at: function (d) { return "前回の点検（" + d + "）から変わったこと"; },
       measured: "点検日時 ",
       v_red: function (c) { return "離陸の前に、直してほしいことが " + c.red + " 件あります。"; },
       v_yellow: function (c) { return "急ぎの問題はありません。確認してほしいことが " + c.yellow + " 件あります。"; },
@@ -270,13 +298,17 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
       s_todo: "What to do", s_diff: "Changes since the last check", s_ok: "Checked and fine",
       s_limits: "What this check can't tell you", s_detail: "Technical details (for experts)", detail_open: "Open the technical details",
       what: "What's happening", why: "If you leave it", how: "How to fix it", p_red: "Fix now", p_yellow: "Check",
+      e_self: "You can do this", e_help: "Best done with an expert or an AI", e_time: "Takes ", undo: "To undo", keep: "When it's fine to leave",
+      ai_title: "Ask an AI", ai_hint: "A request you can paste straight into Claude Code or similar. It contains no key values or file contents.",
+      copy: "Copy request", copied: "Copied ✓", copy_fail: "Selected. Press ⌘C to copy",
+      s_diff_at: function (d) { return "Changes since the last check (" + d + ")"; },
       measured: "Checked ",
       v_red: function (c) { return c.red + (c.red === 1 ? " thing needs" : " things need") + " fixing before takeoff."; },
       v_yellow: function (c) { return "Nothing urgent. " + c.yellow + (c.yellow === 1 ? " thing is" : " things are") + " worth a look."; },
       v_green: function () { return "No problems found in what we checked."; },
       first: "This is the first check. From the next one, what got better or worse shows up here.",
       same: "Nothing changed since the last check.", better: "Better", worse: "Worse",
-      where: function (p) { return "Raw data such as the IPA 17-point checklist and the full threat list (written in Japanese)." + (p ? " The same content is saved in this file: " : ""); },
+      where: function (p) { return "Raw data such as the IPA 17-point checklist and the full threat list. Names that come from CyberRiskScape stay in Japanese." + (p ? " The same content is saved in this file: " : ""); },
       limits: ["Password strength and reuse are not checked.",
         "It does not test whether other devices can actually connect. It checks from inside this Mac.",
         "\"Fine\" is not a guarantee of safety. It means no problem was found in what was checked.",
@@ -295,6 +327,33 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
   function firstTarget(cat) {
     var c = document.querySelector('.task[data-cat="' + cat + '"]') || document.querySelector('#ok li[data-cat="' + cat + '"]');
     return c;
+  }
+
+  // "Ask an AI" box: the request text plus a copy button (clipboard API, then a select-and-copy fallback)
+  function askBox(text, U) {
+    var box = el("div", "ask"), head = el("div", "ask-h"), btn = el("button", "copy", U.copy);
+    var pr = el("div", "prompt", text);
+    btn.type = "button";
+    head.appendChild(el("span", null, U.ai_title)); head.appendChild(btn);
+    box.appendChild(head); box.appendChild(el("p", null, U.ai_hint)); box.appendChild(pr);
+    function done(ok) {
+      btn.textContent = ok ? U.copied : U.copy_fail;
+      setTimeout(function () { btn.textContent = U.copy; }, 2500);
+    }
+    function fallback() {
+      var ok = false;
+      try {
+        var r = document.createRange(); r.selectNodeContents(pr);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        ok = document.execCommand("copy");
+      } catch (e) { ok = false; }
+      done(ok);
+    }
+    btn.addEventListener("click", function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+      else fallback();
+    });
+    return box;
   }
 
   function render() {
@@ -320,11 +379,25 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
       h.appendChild(el("span", "pill " + f.level, f.level === "red" ? U.p_red : U.p_yellow));
       h.appendChild(el("h3", null, tx(f.title, lang)));
       card.appendChild(h);
+      if (f.effort) {
+        var ef = el("div", "effort");
+        ef.appendChild(el("b", f.effort, f.effort === "self" ? U.e_self : U.e_help));
+        if (f.time) ef.appendChild(el("span", null, U.e_time + tx(f.time, lang)));
+        card.appendChild(ef);
+      }
       var dl = el("dl");
-      [[U.what, f.what, ""], [U.why, f.why, ""], [U.how, f.how, "fix"]].forEach(function (r) {
-        dl.appendChild(el("dt", null, r[0])); dl.appendChild(el("dd", r[2], tx(r[1], lang)));
-      });
+      function row(label, node) { dl.appendChild(el("dt", null, label)); dl.appendChild(node); }
+      row(U.what, el("dd", null, tx(f.what, lang)));
+      row(U.why, el("dd", null, tx(f.why, lang)));
+      if (f.steps && f.steps.length) {
+        var dd = el("dd"), ol = el("ol", "steps");
+        f.steps.forEach(function (s) { ol.appendChild(el("li", null, tx(s, lang))); });
+        dd.appendChild(ol); row(U.how, dd);
+      } else row(U.how, el("dd", "fix", tx(f.how, lang)));
+      if (f.undo) row(U.undo, el("dd", "note", tx(f.undo, lang)));
+      if (f.keep) row(U.keep, el("dd", "note", tx(f.keep, lang)));
       card.appendChild(dl);
+      if (f.askAi) card.appendChild(askBox(tx(f.askAi, lang), U));
       tasks.appendChild(card);
     });
 
@@ -355,7 +428,8 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
       cl.appendChild(a);
     });
 
-    // diff
+    // diff (heading names the previous check's date when there is one)
+    if (D.prevMeasuredAt) $("s-diff").textContent = U.s_diff_at(D.prevMeasuredAt);
     var diff = $("diff"); diff.textContent = "";
     if (!D.diff) diff.appendChild(el("p", "plain", U.first));
     else if (!D.diff.better.length && !D.diff.worse.length) diff.appendChild(el("p", "plain", U.same));
@@ -371,11 +445,12 @@ footer{margin-top:40px;font:11px/1.6 var(--mono);color:var(--dim);letter-spacing
     U.limits.forEach(function (x) { lim.appendChild(el("li", null, x)); });
 
     // detail
-    var where = $("detail-where"); where.textContent = U.where(D.detailPath);
-    if (D.detailPath) where.appendChild(el("code", null, D.detailPath));
-    $("detail-sec").hidden = !D.detail;
-    $("to-detail").hidden = !D.detail;
-    $("detail").textContent = D.detail || "";
+    var dPath = tx(D.detailPath, lang), dText = tx(D.detail, lang);
+    var where = $("detail-where"); where.textContent = U.where(dPath);
+    if (dPath) where.appendChild(el("code", null, dPath));
+    $("detail-sec").hidden = !dText;
+    $("to-detail").hidden = !dText;
+    $("detail").textContent = dText;
     themeLabel();
   }
 
