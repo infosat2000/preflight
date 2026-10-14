@@ -28,6 +28,7 @@ const T = {
         "3. 台帳に自分のサイトや使っているサービスを書いて保存し、もう一度開きます。点検はふつう1〜3分で、終わるとブラウザで結果が開きます。",
         "macOS に止められたときは、「システム設定」→「プライバシーとセキュリティ」の下の方にある「このまま開く」を押してください。",
         "Preflight は読み取るだけで、何も変えません。点検の結果をどこかに送ることもありません。",
+        ...(v.sourceUrl ? [`中身（ソースコード）と変更の記録は、GitHub で確かめられます: ${v.sourceUrl}`] : []),
       ],
     },
     step1: {
@@ -83,6 +84,7 @@ const T = {
         "3. Add your own sites and the services you use to the list, save it, and open Preflight again. A check usually takes 1 to 3 minutes, then the report opens in your browser.",
         "If macOS blocks it, open System Settings, then Privacy & Security, and click Open Anyway near the bottom.",
         "Preflight only reads. It changes nothing and sends your results nowhere.",
+        ...(v.sourceUrl ? [`The source code and change history are on GitHub: ${v.sourceUrl}`] : []),
       ],
     },
     step1: {

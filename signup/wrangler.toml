@@ -37,6 +37,7 @@ SENDER_ADDRESS = "〒542-0081 大阪府大阪市中央区南船場3丁目2番22�
 CONTACT = "info.forestlife.ai@gmail.com"
 DOWNLOAD_KEY = "latest/Preflight.zip"   # R2 の中で、いま配る zip。upload-zip.sh が置き換える
 DOWNLOAD_NAME = "Preflight.zip"         # 受け取った人の手元での名前
+SOURCE_URL = ""                         # リポジトリを公開する日に https://github.com/infosat2000/preflight を入れる
 
 # 秘密の値（wrangler secret put <名前> で入れる）:
 #   RESEND_API_KEY    Resend の API キー（送信だけの権限、このドメインだけ）

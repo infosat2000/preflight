@@ -351,3 +351,10 @@ test("router serves the download page and a missing zip answers 503", async () =
   const res = await worker.fetch(dlPost(url), env);
   assert.equal(res.status, 503);
 });
+
+test("the welcome mail links the source only once SOURCE_URL is set", () => {
+  const v = { downloadUrl: "https://x/download?id=1&e=2&t=3", unsubUrl: "https://x/u", senderName: "FL", senderAddress: "a", contact: "c@x" };
+  assert.doesNotMatch(renderEmail("welcome", "ja", v).text, /github\.com/);
+  assert.match(renderEmail("welcome", "ja", { ...v, sourceUrl: "https://github.com/infosat2000/preflight" }).text, /GitHub で確かめられます: https:\/\/github\.com\/infosat2000\/preflight/);
+  assert.match(renderEmail("welcome", "en", { ...v, sourceUrl: "https://github.com/infosat2000/preflight" }).text, /on GitHub: https:\/\/github\.com/);
+});
