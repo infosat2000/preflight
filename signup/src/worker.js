@@ -166,7 +166,9 @@ export async function sendEmail(env, s, sub, kind, extra = {}, fetchImpl = fetch
     if (missing.length) throw new Error(`not configured: ${missing.join(", ")}`);
   } else {
     // 試し運転では、本文と URL の形だけを見られるようにする（宛先は伏せ、リンクの合言葉は消す）
-    console.log("dry-run email", JSON.stringify({ kind, to: maskEmail(sub.email), subject: mail.subject, text: redactTokens(mail.text) }));
+    // 試験用のアドレス（TEST_ADDRESS）宛てだけは、リンクを伏せずに出す。確認・ダウンロード・停止を本番の前に通しで試すため
+    const showLinks = env.TEST_ADDRESS && sub.email === env.TEST_ADDRESS.trim().toLowerCase();
+    console.log("dry-run email", JSON.stringify({ kind, to: maskEmail(sub.email), subject: mail.subject, text: showLinks ? mail.text : redactTokens(mail.text) }));
     return { dry: true };
   }
   const res = await fetchImpl("https://api.resend.com/emails", {

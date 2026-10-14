@@ -358,3 +358,18 @@ test("the welcome mail links the source only once SOURCE_URL is set", () => {
   assert.match(renderEmail("welcome", "ja", { ...v, sourceUrl: "https://github.com/infosat2000/preflight" }).text, /GitHub で確かめられます: https:\/\/github\.com\/infosat2000\/preflight/);
   assert.match(renderEmail("welcome", "en", { ...v, sourceUrl: "https://github.com/infosat2000/preflight" }).text, /on GitHub: https:\/\/github\.com/);
 });
+
+test("in dry-run, only mails to TEST_ADDRESS show their links in the log", async () => {
+  const { env, fetchImpl } = setup({ SEND_MODE: "dry-run", TEST_ADDRESS: "Taro@Example.com" });
+  const logs = [];
+  const orig = console.log;
+  console.log = (...a) => logs.push(a.join(" "));
+  try {
+    await subscribe(post(good()), env, { now: T0, fetchImpl });
+    await subscribe(post(good({ email: "hanako@example.com" })), env, { now: T0, fetchImpl });
+  } finally {
+    console.log = orig;
+  }
+  assert.match(logs[0], /confirm\?t=[0-9a-f]{48}/);
+  assert.match(logs[1], /confirm\?t=<redacted>/);
+});
