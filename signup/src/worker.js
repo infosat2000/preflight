@@ -62,7 +62,7 @@ function settings(env) {
     senderAddress: env.SENDER_ADDRESS || "",
     contact: env.CONTACT || "",
     downloadKey: env.DOWNLOAD_KEY || "",          // R2 の中の zip の名前（例: Preflight.zip）
-    downloadName: env.DOWNLOAD_NAME || "Preflight.zip",
+    downloadName: env.DOWNLOAD_NAME || "BB-Preflight.zip",
     sourceUrl: env.SOURCE_URL || "",              // リポジトリを公開したら入れる。空ならメールに載せない
     live: env.SEND_MODE === "live",
   };

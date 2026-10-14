@@ -307,7 +307,7 @@ test("the personal download link shows a button on GET and hands over the zip on
   const res = await download(dlPost(url), env, { now: T0 + 3000, fetchImpl });
   assert.equal(res.status, 200);
   assert.equal(res.headers.get("Content-Type"), "application/zip");
-  assert.match(res.headers.get("Content-Disposition"), /attachment; filename="Preflight.zip"/);
+  assert.match(res.headers.get("Content-Disposition"), /attachment; filename="BB-Preflight.zip"/);
   assert.equal(await res.text(), "PK-zip-bytes");
 });
 

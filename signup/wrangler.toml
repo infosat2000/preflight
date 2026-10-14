@@ -36,7 +36,7 @@ SENDER_NAME = "FOREST LIFE*"
 SENDER_ADDRESS = "〒542-0081 大阪府大阪市中央区南船場3丁目2番22号 おおきに南船場ビル205"   # FOREST LIFE* の特商法の表示と同じ
 CONTACT = "info.forestlife.ai@gmail.com"
 DOWNLOAD_KEY = "latest/Preflight.zip"   # R2 の中で、いま配る zip。upload-zip.sh が置き換える
-DOWNLOAD_NAME = "Preflight.zip"         # 受け取った人の手元での名前
+DOWNLOAD_NAME = "BB-Preflight.zip"       # 受け取った人の手元での名前
 TEST_ADDRESS = ""                       # 試し運転のときだけ、このアドレス宛てのリンクをログに伏せずに出す。本番の前に空に戻す
 SOURCE_URL = ""                         # リポジトリを公開する日に https://github.com/infosat2000/preflight を入れる
 
