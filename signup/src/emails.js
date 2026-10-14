@@ -7,9 +7,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const T = {
   ja: {
     confirm: {
-      subject: "【確認】Preflight の受け取りの登録",
+      subject: "【確認】BB Preflight の受け取りの登録",
       body: (v) => [
-        "Preflight（Blackbox Blast Edition）の受け取りの登録をありがとうございます。",
+        "BB Preflight の受け取りの登録をありがとうございます。",
         "下のリンクを押すと登録が終わり、ダウンロードの案内をお送りします。",
         v.confirmUrl,
         "このリンクの有効期限は7日です。",
@@ -17,9 +17,9 @@ const T = {
       ],
     },
     welcome: {
-      subject: "Preflight のダウンロードと導入の手順",
+      subject: "BB Preflight のダウンロードと導入の手順",
       body: (v) => [
-        "登録が終わりました。Preflight は、ここから受け取れます。",
+        "登録が終わりました。BB Preflight は、ここから受け取れます。",
         v.downloadUrl,
         "このリンクはあなた専用です。7日間、5回まで使えます。期限が切れたら、リンクを開くと新しいリンクを受け取れます。",
         "導入の手順:",
@@ -27,31 +27,31 @@ const T = {
         "2. フォルダの中の Preflight.command をダブルクリックします。初めてのときは準備をして、台帳（点検する範囲のメモ）が開きます。",
         "3. 台帳に自分のサイトや使っているサービスを書いて保存し、もう一度開きます。点検はふつう1〜3分で、終わるとブラウザで結果が開きます。",
         "macOS に止められたときは、「システム設定」→「プライバシーとセキュリティ」の下の方にある「このまま開く」を押してください。",
-        "Preflight は読み取るだけで、何も変えません。点検の結果をどこかに送ることもありません。",
+        "BB Preflight は読み取るだけで、何も変えません。点検の結果をどこかに送ることもありません。",
         ...(v.sourceUrl ? [`中身（ソースコード）と変更の記録は、GitHub で確かめられます: ${v.sourceUrl}`] : []),
       ],
     },
     step1: {
-      subject: "Preflight の結果の読み方（NO-GO が出たら）",
+      subject: "BB Preflight の結果の読み方（NO-GO が出たら）",
       body: () => [
-        "Preflight は使ってみましたか。今日は、結果の読み方をお伝えします。",
+        "BB Preflight は使ってみましたか。今日は、結果の読み方をお伝えします。",
         "NO-GO（赤）: 離陸の前に直してほしいところです。外から届く入口や、人に見られやすい鍵などです。カードの「直し方」の手順どおりに進めると、たいてい数分で直せます。",
         "CAUTION（黄）: 確認しておきたいところです。自分で使っている機能なら、そのままで構いません。「このままでよい場合」の欄を見て判断してください。",
         "CLEAR（緑）: 見た範囲で、気になるところはありませんでした。安全の保証ではありません。",
-        "直したら、Preflight をもう一度開いて点検してください。直っていれば「前回の点検から変わったこと」に出ます。",
+        "直したら、BB Preflight をもう一度開いて点検してください。直っていれば「前回の点検から変わったこと」に出ます。",
       ],
     },
     step2: {
       subject: "点検して、直すところまでお手伝いします",
       body: (v) => [
-        "Preflight の結果で、自分で直すのが不安なところはありませんでしたか。",
+        "BB Preflight の結果で、自分で直すのが不安なところはありませんでしたか。",
         "FOREST LIFE* では、Mac の点検と、見つかったところを直すお手伝いをしています。AI エージェントの設定や、公開しているサイトの入口も一緒に見ます。",
         `ご相談は、このメールへの返信か、${v.contact} からどうぞ。`,
         "このメールで、登録のときにお伝えした案内はひと区切りです。このあとは、新しい版や、注意が必要なセキュリティ情報があるときだけお送りします。",
       ],
     },
     footer: (v, ad) => [
-      ad ? "このメールは、Preflight のダウンロードを申し込まれた方にお送りしています。" : "このメールは、Preflight の受け取りの登録をされた方にお送りしています。",
+      ad ? "このメールは、BB Preflight のダウンロードを申し込まれた方にお送りしています。" : "このメールは、BB Preflight の受け取りの登録をされた方にお送りしています。",
       ...(ad ? [`配信の停止: ${v.unsubUrl}`] : []),
       `送信者: ${v.senderName}`,
       `所在地: ${v.senderAddress}`,
@@ -63,9 +63,9 @@ const T = {
   },
   en: {
     confirm: {
-      subject: "Confirm your sign-up for Preflight",
+      subject: "Confirm your sign-up for BB Preflight",
       body: (v) => [
-        "Thanks for signing up to get Preflight (Blackbox Blast Edition).",
+        "Thanks for signing up to get BB Preflight.",
         "Click the link below to finish, and we'll send you the download.",
         v.confirmUrl,
         "This link works for 7 days.",
@@ -73,41 +73,41 @@ const T = {
       ],
     },
     welcome: {
-      subject: "Your Preflight download and how to install it",
+      subject: "Your BB Preflight download and how to install it",
       body: (v) => [
-        "You're signed up. Get Preflight here:",
+        "You're signed up. Get BB Preflight here:",
         v.downloadUrl,
         "This link is just for you. It works 5 times within 7 days. After that, open it and you can ask for a new one.",
         "To install:",
         "1. Double-click the zip to open it.",
         "2. Double-click Preflight.command inside the folder. The first time, it sets itself up and opens your list (a short note of what to check).",
-        "3. Add your own sites and the services you use to the list, save it, and open Preflight again. A check usually takes 1 to 3 minutes, then the report opens in your browser.",
+        "3. Add your own sites and the services you use to the list, save it, and open BB Preflight again. A check usually takes 1 to 3 minutes, then the report opens in your browser.",
         "If macOS blocks it, open System Settings, then Privacy & Security, and click Open Anyway near the bottom.",
-        "Preflight only reads. It changes nothing and sends your results nowhere.",
+        "BB Preflight only reads. It changes nothing and sends your results nowhere.",
         ...(v.sourceUrl ? [`The source code and change history are on GitHub: ${v.sourceUrl}`] : []),
       ],
     },
     step1: {
-      subject: "Reading your Preflight results (when you get a NO-GO)",
+      subject: "Reading your BB Preflight results (when you get a NO-GO)",
       body: () => [
-        "Have you tried Preflight yet? Here's how to read the results.",
+        "Have you tried BB Preflight yet? Here's how to read the results.",
         "NO-GO (red): fix these before takeoff. These are doors reachable from outside, keys stored where others could see them, and so on. Follow the fix steps on the card; most take a few minutes.",
         "CAUTION (yellow): worth a look. If it's a feature you use on purpose, you can leave it. The \"when it's fine to leave\" line helps you decide.",
-        "CLEAR (green): nothing stood out in what Preflight looked at. It is not a guarantee of safety.",
-        "After fixing something, open Preflight again and run the check. If it worked, the change shows up under \"Changes since the last check\".",
+        "CLEAR (green): nothing stood out in what BB Preflight looked at. It is not a guarantee of safety.",
+        "After fixing something, open BB Preflight again and run the check. If it worked, the change shows up under \"Changes since the last check\".",
       ],
     },
     step2: {
       subject: "We can check your Mac with you and help fix it",
       body: (v) => [
-        "Did your Preflight results show anything you'd rather not fix on your own?",
+        "Did your BB Preflight results show anything you'd rather not fix on your own?",
         "FOREST LIFE* offers Mac check-ups and help fixing what they find, including AI agent settings and the doors your public sites leave open.",
         `To ask, reply to this email or contact ${v.contact}.`,
         "This is the last of the emails we mentioned when you signed up. From now on, we'll only write when there's a new version or a security issue worth knowing about.",
       ],
     },
     footer: (v, ad) => [
-      ad ? "You're getting this because you signed up to download Preflight." : "You're getting this because someone signed up for Preflight with this address.",
+      ad ? "You're getting this because you signed up to download BB Preflight." : "You're getting this because someone signed up for BB Preflight with this address.",
       ...(ad ? [`Unsubscribe: ${v.unsubUrl}`] : []),
       `Sender: ${v.senderName}`,
       `Address: ${v.senderAddress}`,

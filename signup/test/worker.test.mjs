@@ -194,7 +194,7 @@ test("cron sends day 3 and day 7 mails once each, and never after unsubscribing"
   assert.deepEqual((await runScheduled(env, { now: T0 + STEPS[0] - 1, fetchImpl })).sent, []);
   const r1 = await runScheduled(env, { now: T0 + STEPS[0], fetchImpl });
   assert.equal(r1.sent.length, 2);
-  assert.match(sent[n + 1].subject, /Reading your Preflight results/);
+  assert.match(sent[n + 1].subject, /Reading your BB Preflight results/);
   assert.deepEqual((await runScheduled(env, { now: T0 + STEPS[0] + 3600_000, fetchImpl })).sent, [], "not twice");
   // Hanako unsubscribes before day 7
   const [, id, t] = unsubFrom(sent[n + 1]);
