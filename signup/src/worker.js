@@ -107,6 +107,15 @@ function page(lang, s, [title, text], status = 200, form = "") {
 
 // ------------------------------------------------------------ 送信
 
+export function maskEmail(email) {
+  const [user, domain] = String(email).split("@");
+  return `${user.slice(0, 1)}***@${domain || ""}`;
+}
+
+export function redactTokens(text) {
+  return String(text).replace(/([?&]t=)[^&\s>"]+/g, "$1<redacted>");
+}
+
 export async function sendEmail(env, s, sub, kind, extra = {}, fetchImpl = fetch) {
   const unsubUrl = `${s.publicBase}/unsubscribe?id=${sub.id}&t=${await unsubToken(env, sub.id, sub.email)}`;
   const v = { ...s, unsubUrl, ...extra };
@@ -126,7 +135,8 @@ export async function sendEmail(env, s, sub, kind, extra = {}, fetchImpl = fetch
     const missing = ["from", "publicBase", "senderName", "senderAddress", "contact", ...(kind === "welcome" ? ["downloadUrl"] : [])].filter((k) => !s[k]);
     if (missing.length) throw new Error(`not configured: ${missing.join(", ")}`);
   } else {
-    console.log("dry-run email", JSON.stringify({ kind, to: sub.email, subject: mail.subject }));
+    // 試し運転では、本文と URL の形だけを見られるようにする（宛先は伏せ、リンクの合言葉は消す）
+    console.log("dry-run email", JSON.stringify({ kind, to: maskEmail(sub.email), subject: mail.subject, text: redactTokens(mail.text) }));
     return { dry: true };
   }
   const res = await fetchImpl("https://api.resend.com/emails", {

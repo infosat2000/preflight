@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import worker, { subscribe, confirm, unsubscribe, runScheduled, unsubToken, CONSENT, STEPS, CONFIRM_TTL, KEEP_AFTER } from "../src/worker.js";
+import worker, { subscribe, confirm, unsubscribe, runScheduled, unsubToken, maskEmail, redactTokens, CONSENT, STEPS, CONFIRM_TTL, KEEP_AFTER } from "../src/worker.js";
 import { renderEmail } from "../src/emails.js";
 
 const SCHEMA = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
@@ -270,4 +270,11 @@ test("without its secrets the worker refuses everything, even in dry-run", async
   const { env: env2, fetchImpl } = setup({ SEND_MODE: "dry-run", TURNSTILE_SECRET: "" });
   const direct = await subscribe(post(good()), env2, { now: T0, fetchImpl });
   assert.equal(direct.status, 400, "no Turnstile secret means no sign-up");
+});
+
+test("dry-run logs hide the address and the link secrets", () => {
+  assert.equal(maskEmail("taro@example.com"), "t***@example.com");
+  const out = redactTokens("確認: https://signup.example/confirm?t=abc123\n停止: https://signup.example/unsubscribe?id=5&t=def.456 です");
+  assert.ok(!out.includes("abc123") && !out.includes("def.456"));
+  assert.ok(out.includes("confirm?t=<redacted>") && out.includes("id=5&t=<redacted>"));
 });
