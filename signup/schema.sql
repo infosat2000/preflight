@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS subscribers_due ON subscribers (status, step, confirm
 CREATE TABLE IF NOT EXISTS events (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   email      TEXT NOT NULL,
-  kind       TEXT NOT NULL,                  -- 'signup' | 'confirm' | 'unsubscribe' | 'send' | 'delete'
+  kind       TEXT NOT NULL,                  -- 'signup' | 'confirm' | 'unsubscribe' | 'send' | 'download'（detail = リンクの期限） | 'relink'
   detail     TEXT,
   ip_hash    TEXT,
   at         TEXT NOT NULL

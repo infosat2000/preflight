@@ -7,6 +7,7 @@
 
 ### 追加
 - メール登録の仕組み（signup/）。FOREST LIFE* の Cloudflare に置く Worker と D1 で、紹介ページの申し込みを受け、Resend で確認メール・ダウンロードの案内・3日後と7日後の案内を送る。SEND_MODE を live にするまでは送らない。手順は signup/README.md。
+- 配る zip は、メールを確認した人だけに専用のリンク（7日間・5回まで）で渡す。zip は R2 の非公開の置き場に置き、signup/upload-zip.sh で作って置く。
 
 ### 変更
 - 製品名を「Preflight（FOREST LIFE*）」とし、Blackbox Blast で紹介する版として「Blackbox Blast Edition」と添える。著作権の表示（NOTICE・LICENSE・レポートの末尾）は FOREST LIFE* にそろえる。

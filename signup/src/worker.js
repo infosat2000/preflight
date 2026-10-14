@@ -4,6 +4,8 @@
 //   GET  /confirm?t=    確認リンク（登録を終え、ダウンロードの案内を送る）
 //   GET  /unsubscribe   配信停止の確認画面（ボタンを押すと止まる。リンクの先読みで止まらないように）
 //   POST /unsubscribe   配信停止（メールソフトのワンクリック停止 RFC 8058 もここに来る）
+//   GET  /download      確認済みの人専用のダウンロード画面（ボタンを押すと zip を渡す。期限切れなら新しいリンクを送れる）
+//   POST /download      zip を渡す（R2 の非公開の置き場から）／ action=resend で新しいリンクをメールで送る
 //   cron（毎時）         3日後・7日後のメール、期限切れの確認待ちと、保存期間を過ぎた記録の削除
 //
 // SEND_MODE が "live" でない間は、Resend を呼ばずにログに出すだけ（設定の途中で誤って送らないため）。
@@ -19,6 +21,9 @@ export const CONFIRM_TTL = 7 * DAY;     // 確認リンクの有効期限
 export const RESEND_GAP = 10 * 60_000;  // 確認メールを送り直すまでの間隔
 export const STEPS = [3 * DAY, 7 * DAY]; // 確認から何日後に案内を送るか（step 1, 2）
 export const KEEP_AFTER = 31 * DAY;     // 停止のあと、同意の記録を残す期間（最後の送信または停止から）
+export const DOWNLOAD_TTL = 7 * DAY;    // ダウンロードのリンクの有効期限
+export const DOWNLOAD_LIMIT = 5;        // 1つのリンクで受け取れる回数
+const RELINK_GAP = 10 * 60_000;         // 新しいダウンロードのリンクを送り直すまでの間隔
 const IP_LIMIT = 5;                     // 同じ IP からの申し込みは1時間に5回まで
 const EMAIL_RE = /^[^\s@"<>()[\]\\,;:]+@[^\s@"<>()[\]\\,;:]+\.[^\s@"<>()[\]\\,;:]+$/;
 
@@ -32,6 +37,12 @@ async function hmac(secret, msg) {
   return hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg)));
 }
 export const unsubToken = (env, id, email) => hmac(env.TOKEN_SECRET, `unsub:${id}:${email}`);
+export const downloadToken = (env, id, email, exp) => hmac(env.TOKEN_SECRET, `dl:${id}:${email}:${exp}`);
+
+export async function downloadLink(env, s, sub, now) {
+  const exp = now + DOWNLOAD_TTL;
+  return `${s.publicBase}/download?id=${sub.id}&e=${exp}&t=${await downloadToken(env, sub.id, sub.email, exp)}`;
+}
 
 function timingSafeEqual(a, b) {
   if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
@@ -50,7 +61,8 @@ function settings(env) {
     senderName: env.SENDER_NAME || "FOREST LIFE*",
     senderAddress: env.SENDER_ADDRESS || "",
     contact: env.CONTACT || "",
-    downloadUrl: env.DOWNLOAD_URL || "",
+    downloadKey: env.DOWNLOAD_KEY || "",          // R2 の中の zip の名前（例: Preflight.zip）
+    downloadName: env.DOWNLOAD_NAME || "Preflight.zip",
     live: env.SEND_MODE === "live",
   };
 }
@@ -78,6 +90,14 @@ const PAGE = {
     unsubBtn: "配信を止める",
     unsubDone: ["配信を止めました", "これ以降、このアドレスにはお送りしません。Preflight はそのまま使えます。"],
     bad: ["リンクが正しくありません", "メールにあったリンクを、そのまま開いてください。"],
+    dlAsk: ["Preflight のダウンロード", "下のボタンを押すと、zip のダウンロードが始まります。このリンクはあなた専用です。人には渡さないでください。"],
+    dlBtn: "ダウンロードする",
+    dlExpired: ["リンクの期限が切れています", "下のボタンを押すと、登録のアドレスに新しいリンクをお送りします。"],
+    dlUsed: ["このリンクで受け取れる回数を超えました", "下のボタンを押すと、登録のアドレスに新しいリンクをお送りします。"],
+    relinkBtn: "新しいリンクを送る",
+    relinked: ["新しいリンクをお送りしました", "メールを見てください。届かないときは、迷惑メールのフォルダも見てください。"],
+    relinkWait: ["新しいリンクは送ったばかりです", "メールを見てください。10分たっても届かないときは、もう一度お試しください。"],
+    dlMissing: ["いまはダウンロードできません", "準備中です。少し時間をおいて、もう一度開いてください。"],
     back: "Preflight の紹介ページへ",
   },
   en: {
@@ -87,6 +107,14 @@ const PAGE = {
     unsubBtn: "Unsubscribe",
     unsubDone: ["You're unsubscribed", "We won't email this address again. Preflight keeps working."],
     bad: ["This link isn't valid", "Please open the link exactly as it appears in the email."],
+    dlAsk: ["Download Preflight", "Click the button below to download the zip. This link is just for you, so please don't share it."],
+    dlBtn: "Download",
+    dlExpired: ["This link has expired", "Click the button below and we'll email a new link to the address you signed up with."],
+    dlUsed: ["This link has been used too many times", "Click the button below and we'll email a new link to the address you signed up with."],
+    relinkBtn: "Send me a new link",
+    relinked: ["We've sent you a new link", "Check your email. If it doesn't arrive, look in your spam folder."],
+    relinkWait: ["We just sent you a new link", "Check your email. If nothing arrives in 10 minutes, try again."],
+    dlMissing: ["The download isn't available right now", "We're getting it ready. Please try again a little later."],
     back: "Back to the Preflight page",
   },
 };
@@ -132,7 +160,8 @@ export async function sendEmail(env, s, sub, kind, extra = {}, fetchImpl = fetch
   };
   if (s.live) {
     // 特定電子メール法の表示（送信者・所在地・連絡先）が欠けたまま送らない
-    const missing = ["from", "publicBase", "senderName", "senderAddress", "contact", ...(kind === "welcome" ? ["downloadUrl"] : [])].filter((k) => !s[k]);
+    const missing = ["from", "publicBase", "senderName", "senderAddress", "contact", ...(kind === "welcome" ? ["downloadKey"] : [])].filter((k) => !s[k]);
+    if (kind === "welcome" && !env.DOWNLOADS) missing.push("DOWNLOADS (R2)");
     if (missing.length) throw new Error(`not configured: ${missing.join(", ")}`);
   } else {
     // 試し運転では、本文と URL の形だけを見られるようにする（宛先は伏せ、リンクの合言葉は消す）
@@ -249,7 +278,7 @@ export async function confirm(request, env, { now = Date.now(), fetchImpl = fetc
   // 確認のあとも confirm_hash は残す（メールソフトがリンクを先に開いても、本人が押したときに「登録済み」と出せるように）
   await db.prepare("UPDATE subscribers SET status = 'active', confirmed_at = ?, step = 0, last_sent_at = ? WHERE id = ?").bind(iso(now), iso(now), sub.id).run();
   await logEvent(db, sub.email, "confirm", sub.consent_text, null, now);
-  await sendEmail(env, s, { ...sub, step: 0 }, "welcome", { idempotencyKey: `welcome-${sub.id}-${Date.parse(sub.confirm_sent_at)}` }, fetchImpl);
+  await sendEmail(env, s, { ...sub, step: 0 }, "welcome", { downloadUrl: await downloadLink(env, s, sub, now), idempotencyKey: `welcome-${sub.id}-${Date.parse(sub.confirm_sent_at)}` }, fetchImpl);
   return page(L, s, PAGE[L].confirmed);
 }
 
@@ -277,6 +306,54 @@ export async function unsubscribe(request, env, { now = Date.now() } = {}) {
   // メールソフトのワンクリック停止には、空の 200 を返す（RFC 8058）
   if (oneClick) return new Response(null, { status: 200, headers: { "Cache-Control": "no-store" } });
   return page(L, s, PAGE[L].unsubDone);
+}
+
+// ------------------------------------------------------------ ダウンロード
+
+// 確認済みの人だけが、メールの専用リンクから zip を受け取れる。zip は R2 の非公開の置き場にあり、外から直接は開けない。
+// GET は画面を出すだけ（メールソフトがリンクを先に開いても、回数を使わないように）。ボタンの POST で zip を渡す。
+export async function download(request, env, { now = Date.now(), fetchImpl = fetch } = {}) {
+  const s = settings(env);
+  const url = new URL(request.url);
+  const id = Number(url.searchParams.get("id"));
+  const exp = Number(url.searchParams.get("e"));
+  const t = url.searchParams.get("t") || "";
+  const db = env.DB;
+  const sub = Number.isInteger(id) && id > 0 && Number.isInteger(exp) ? await db.prepare("SELECT * FROM subscribers WHERE id = ?").bind(id).first() : null;
+  const L = sub && PAGE[sub.lang] ? sub.lang : "ja";
+  // 署名が合わない、または確認済みでない（停止した人を含む）なら、何も渡さない
+  if (!sub || sub.status !== "active" || !timingSafeEqual(t, await downloadToken(env, sub.id, sub.email, exp))) return page(L, s, PAGE[L].bad, 400);
+  const relinkForm = `<form method="post"><input type="hidden" name="action" value="resend"><p><button type="submit">${escHtml(PAGE[L].relinkBtn)}</button></p></form>`;
+  const used = async () => (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE email = ? AND kind = 'download' AND detail = ?").bind(sub.email, String(exp)).first()).n;
+
+  const form = request.method === "POST" ? new URLSearchParams(await request.text()) : null;
+  if (form && form.get("action") === "resend") {
+    // 新しいリンクは、署名の正しいリンク（期限切れでもよい）からだけ、登録のアドレスに送る
+    const last = await db.prepare("SELECT MAX(at) AS at FROM events WHERE email = ? AND kind = 'relink'").bind(sub.email).first();
+    if (last && last.at && now - Date.parse(last.at) < RELINK_GAP) return page(L, s, PAGE[L].relinkWait);
+    await sendEmail(env, s, { ...sub }, "welcome", { downloadUrl: await downloadLink(env, s, sub, now), idempotencyKey: `relink-${sub.id}-${now}` }, fetchImpl);
+    await logEvent(db, sub.email, "relink", null, null, now);
+    return page(L, s, PAGE[L].relinked);
+  }
+  if (now > exp) return page(L, s, PAGE[L].dlExpired, 410, relinkForm);
+  if ((await used()) >= DOWNLOAD_LIMIT) return page(L, s, PAGE[L].dlUsed, 429, relinkForm);
+  if (!form) {
+    const btn = `<form method="post"><p><button type="submit">${escHtml(PAGE[L].dlBtn)}</button></p></form>`;
+    return page(L, s, PAGE[L].dlAsk, 200, btn);
+  }
+  const obj = env.DOWNLOADS && s.downloadKey ? await env.DOWNLOADS.get(s.downloadKey) : null;
+  if (!obj) return page(L, s, PAGE[L].dlMissing, 503);
+  await logEvent(db, sub.email, "download", String(exp), null, now);
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${s.downloadName.replace(/[^A-Za-z0-9._-]/g, "_")}"`,
+      ...(obj.size ? { "Content-Length": String(obj.size) } : {}),
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex",
+      "Referrer-Policy": "no-referrer",
+    },
+  });
 }
 
 // ------------------------------------------------------------ 定期の処理
@@ -334,6 +411,7 @@ export default {
       }
       if (url.pathname === "/confirm" && request.method === "GET") return await confirm(request, env);
       if (url.pathname === "/unsubscribe" && (request.method === "GET" || request.method === "POST")) return await unsubscribe(request, env);
+      if (url.pathname === "/download" && (request.method === "GET" || request.method === "POST")) return await download(request, env);
       return new Response("Not found", { status: 404, headers: { "X-Robots-Tag": "noindex" } });
     } catch (err) {
       console.error("signup:", err && err.message);

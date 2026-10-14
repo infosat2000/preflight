@@ -21,6 +21,7 @@ const T = {
       body: (v) => [
         "登録が終わりました。Preflight は、ここから受け取れます。",
         v.downloadUrl,
+        "このリンクはあなた専用です。7日間、5回まで使えます。期限が切れたら、リンクを開くと新しいリンクを受け取れます。",
         "導入の手順:",
         "1. 受け取った zip をダブルクリックして開きます。",
         "2. フォルダの中の Preflight.command をダブルクリックします。初めてのときは準備をして、台帳（点検する範囲のメモ）が開きます。",
@@ -75,6 +76,7 @@ const T = {
       body: (v) => [
         "You're signed up. Get Preflight here:",
         v.downloadUrl,
+        "This link is just for you. It works 5 times within 7 days. After that, open it and you can ask for a new one.",
         "To install:",
         "1. Double-click the zip to open it.",
         "2. Double-click Preflight.command inside the folder. The first time, it sets itself up and opens your list (a short note of what to check).",

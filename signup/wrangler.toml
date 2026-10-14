@@ -16,6 +16,11 @@ binding = "DB"
 database_name = "preflight-signup"
 database_id = "9afbcc76-c70a-4863-bc1d-e0d2448ff3a7"   # 2026-10-14 作成（APAC）。秘密ではない
 
+# 配る zip の置き場（非公開。r2.dev の公開 URL も独自ドメインもつながない）。受け口だけが、確認済みの人に渡す
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "preflight-downloads"
+
 # 1時間に1回、3日後・7日後の案内と、古い記録の片付けをする
 [triggers]
 crons = ["17 * * * *"]
@@ -30,10 +35,11 @@ MAIL_REPLY_TO = "info.forestlife.ai@gmail.com"   # forestlife.dev は受信で�
 SENDER_NAME = "FOREST LIFE*"
 SENDER_ADDRESS = "〒542-0081 大阪府大阪市中央区南船場3丁目2番22号 おおきに南船場ビル205"   # FOREST LIFE* の特商法の表示と同じ
 CONTACT = "info.forestlife.ai@gmail.com"
-DOWNLOAD_URL = ""       # ダウンロードの URL（リポジトリを公開する方法が決まってから）
+DOWNLOAD_KEY = "latest/Preflight.zip"   # R2 の中で、いま配る zip。upload-zip.sh が置き換える
+DOWNLOAD_NAME = "Preflight.zip"         # 受け取った人の手元での名前
 
 # 秘密の値（wrangler secret put <名前> で入れる）:
 #   RESEND_API_KEY    Resend の API キー（送信だけの権限、このドメインだけ）
 #   TURNSTILE_SECRET  Turnstile のシークレットキー
-#   TOKEN_SECRET      配信停止リンクの署名用。openssl rand -hex 32 で作る
+#   TOKEN_SECRET      配信停止とダウンロードのリンクの署名用。openssl rand -hex 32 で作る
 #   IP_HASH_SALT      IP をハッシュにするときの塩。openssl rand -hex 32 で作る

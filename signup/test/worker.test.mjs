@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import worker, { subscribe, confirm, unsubscribe, runScheduled, unsubToken, maskEmail, redactTokens, CONSENT, STEPS, CONFIRM_TTL, KEEP_AFTER } from "../src/worker.js";
+import worker, { subscribe, confirm, unsubscribe, download, downloadLink, runScheduled, unsubToken, maskEmail, DOWNLOAD_TTL, DOWNLOAD_LIMIT, redactTokens, CONSENT, STEPS, CONFIRM_TTL, KEEP_AFTER } from "../src/worker.js";
 import { renderEmail } from "../src/emails.js";
 
 const SCHEMA = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
@@ -22,6 +22,11 @@ function d1() {
     all: async () => ({ results: db.prepare(sql).all(...args) }),
   });
   return { prepare: (sql) => wrap(sql), raw: db };
+}
+
+// R2 の get だけの薄い代わり
+function r2(files) {
+  return { get: async (key) => (key in files ? { body: files[key], size: files[key].length } : null) };
 }
 
 function setup(over = {}) {
@@ -51,7 +56,8 @@ function setup(over = {}) {
     SENDER_NAME: "FOREST LIFE*",
     SENDER_ADDRESS: "東京都テスト区1-2-3",
     CONTACT: "hello@example.com",
-    DOWNLOAD_URL: "https://github.com/infosat2000/preflight/releases/latest",
+    DOWNLOAD_KEY: "latest/Preflight.zip",
+    DOWNLOADS: r2({ "latest/Preflight.zip": "PK-zip-bytes" }),
     ...over,
   };
   return { env, sent, fetchImpl };
@@ -131,7 +137,7 @@ test("confirm activates, sends the welcome mail with the download and a working 
   assert.equal(res.status, 200);
   assert.match(await res.text(), /登録が終わりました/);
   const welcome = sent[1];
-  assert.match(welcome.text, /releases\/latest/);
+  assert.match(welcome.text, /https:\/\/signup\.example\.dev\/download\?id=\d+&e=\d+&t=[0-9a-f]{64}/);
   assert.match(welcome.text, /送信者: FOREST LIFE\*/);
   assert.match(welcome.text, /所在地: 東京都テスト区1-2-3/);
   assert.equal(welcome.headers["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
@@ -277,4 +283,71 @@ test("dry-run logs hide the address and the link secrets", () => {
   const out = redactTokens("確認: https://signup.example/confirm?t=abc123\n停止: https://signup.example/unsubscribe?id=5&t=def.456 です");
   assert.ok(!out.includes("abc123") && !out.includes("def.456"));
   assert.ok(out.includes("confirm?t=<redacted>") && out.includes("id=5&t=<redacted>"));
+});
+
+const dlFrom = (mail) => mail.text.match(/(https:\/\/signup\.example\.dev\/download\?id=\d+&e=(\d+)&t=[0-9a-f]{64})/);
+const dlPost = (url, body = "") => new Request(url, { method: "POST", body, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+
+async function confirmed(over = {}) {
+  const ctx = setup(over);
+  await subscribe(post(good()), ctx.env, { now: T0, fetchImpl: ctx.fetchImpl });
+  await confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(ctx.sent[0])}`), ctx.env, { now: T0 + 1000, fetchImpl: ctx.fetchImpl });
+  const [, url, exp] = dlFrom(ctx.sent[1]);
+  return { ...ctx, url, exp: Number(exp) };
+}
+
+test("the personal download link shows a button on GET and hands over the zip on POST", async () => {
+  const { env, url, exp, fetchImpl } = await confirmed();
+  assert.equal(exp, T0 + 1000 + DOWNLOAD_TTL);
+  const ask = await download(new Request(url), env, { now: T0 + 2000, fetchImpl });
+  assert.equal(ask.status, 200);
+  assert.match(await ask.text(), /<form method="post">/);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM events WHERE kind = 'download'").get().n, 0); // GET uses nothing up
+  const res = await download(dlPost(url), env, { now: T0 + 3000, fetchImpl });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("Content-Type"), "application/zip");
+  assert.match(res.headers.get("Content-Disposition"), /attachment; filename="Preflight.zip"/);
+  assert.equal(await res.text(), "PK-zip-bytes");
+});
+
+test("a tampered, unknown or unsubscribed download link gets nothing", async () => {
+  const { env, url, fetchImpl } = await confirmed();
+  const bad = url.replace(/t=[0-9a-f]{4}/, "t=0000");
+  assert.equal((await download(dlPost(bad), env, { now: T0 + 2000, fetchImpl })).status, 400);
+  const later = url.replace(/e=\d+/, `e=${T0 + 99 * DAY}`); // stretching the expiry breaks the signature
+  assert.equal((await download(dlPost(later), env, { now: T0 + 2000, fetchImpl })).status, 400);
+  env.DB.raw.prepare("UPDATE subscribers SET status = 'unsubscribed'").run();
+  assert.equal((await download(dlPost(url), env, { now: T0 + 2000, fetchImpl })).status, 400);
+});
+
+test("a link works 5 times, expires after 7 days, and can send a fresh link to the same address", async () => {
+  const { env, url, exp, sent, fetchImpl } = await confirmed();
+  for (let i = 0; i < DOWNLOAD_LIMIT; i++) assert.equal((await download(dlPost(url), env, { now: T0 + 2000 + i, fetchImpl })).status, 200);
+  const used = await download(dlPost(url), env, { now: T0 + 3000, fetchImpl });
+  assert.equal(used.status, 429);
+  assert.match(await used.text(), /name="action" value="resend"/);
+  assert.equal((await download(new Request(url), env, { now: exp + 1, fetchImpl })).status, 410);
+  const re = await download(dlPost(url, "action=resend"), env, { now: exp + 2, fetchImpl });
+  assert.equal(re.status, 200);
+  assert.equal(sent.length, 3);
+  assert.deepEqual(sent[2].to, ["taro@example.com"]); // only ever to the signed-up address
+  const [, fresh] = dlFrom(sent[2]);
+  assert.equal((await download(dlPost(fresh), env, { now: exp + 3, fetchImpl })).status, 200);
+  // asking again right away does not send another mail
+  await download(dlPost(url, "action=resend"), env, { now: exp + 4, fetchImpl });
+  assert.equal(sent.length, 3);
+});
+
+test("live mode will not send the welcome mail without the zip store", async () => {
+  const { env, sent, fetchImpl } = setup({ DOWNLOADS: undefined });
+  await subscribe(post(good()), env, { now: T0, fetchImpl });
+  await assert.rejects(confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(sent[0])}`), env, { now: T0 + 1000, fetchImpl }), /DOWNLOADS/);
+});
+
+test("router serves the download page and a missing zip answers 503", async () => {
+  const { env } = await confirmed({ DOWNLOADS: r2({}) });
+  const sub = env.DB.raw.prepare("SELECT * FROM subscribers").get();
+  const url = await downloadLink(env, { publicBase: "https://signup.example.dev" }, sub, Date.now()); // the router uses the real clock
+  const res = await worker.fetch(dlPost(url), env);
+  assert.equal(res.status, 503);
 });
