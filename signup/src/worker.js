@@ -324,13 +324,16 @@ export async function download(request, env, { now = Date.now(), fetchImpl = fet
   const db = env.DB;
   const sub = Number.isInteger(id) && id > 0 && Number.isInteger(exp) ? await db.prepare("SELECT * FROM subscribers WHERE id = ?").bind(id).first() : null;
   const L = sub && PAGE[sub.lang] ? sub.lang : "ja";
-  // 署名が合わない、または確認済みでない（停止した人を含む）なら、何も渡さない
-  if (!sub || sub.status !== "active" || !timingSafeEqual(t, await downloadToken(env, sub.id, sub.email, exp))) return page(L, s, PAGE[L].bad, 400);
-  const relinkForm = `<form method="post"><input type="hidden" name="action" value="resend"><p><button type="submit">${escHtml(PAGE[L].relinkBtn)}</button></p></form>`;
+  // 署名が合わない、または確認を済ませていないなら、何も渡さない。
+  // 配信を止めた人も、受け取ったリンクの期限内なら受け取れる（オーナーの判断 2026-10-14）
+  const stopped = sub && sub.status === "unsubscribed";
+  if (!sub || !(sub.status === "active" || stopped) || !timingSafeEqual(t, await downloadToken(env, sub.id, sub.email, exp))) return page(L, s, PAGE[L].bad, 400);
+  // 配信を止めた人には、新しいリンクのメールも送らない
+  const relinkForm = stopped ? "" : `<form method="post"><input type="hidden" name="action" value="resend"><p><button type="submit">${escHtml(PAGE[L].relinkBtn)}</button></p></form>`;
   const used = async () => (await db.prepare("SELECT COUNT(*) AS n FROM events WHERE email = ? AND kind = 'download' AND detail = ?").bind(sub.email, String(exp)).first()).n;
 
   const form = request.method === "POST" ? new URLSearchParams(await request.text()) : null;
-  if (form && form.get("action") === "resend") {
+  if (form && form.get("action") === "resend" && !stopped) {
     // 新しいリンクは、署名の正しいリンク（期限切れでもよい）からだけ、登録のアドレスに送る
     const last = await db.prepare("SELECT MAX(at) AS at FROM events WHERE email = ? AND kind = 'relink'").bind(sub.email).first();
     if (last && last.at && now - Date.parse(last.at) < RELINK_GAP) return page(L, s, PAGE[L].relinkWait);

@@ -310,14 +310,29 @@ test("the personal download link shows a button on GET and hands over the zip on
   assert.equal(await res.text(), "PK-zip-bytes");
 });
 
-test("a tampered, unknown or unsubscribed download link gets nothing", async () => {
+test("a tampered, unknown or unconfirmed download link gets nothing", async () => {
   const { env, url, fetchImpl } = await confirmed();
   const bad = url.replace(/t=[0-9a-f]{4}/, "t=0000");
   assert.equal((await download(dlPost(bad), env, { now: T0 + 2000, fetchImpl })).status, 400);
   const later = url.replace(/e=\d+/, `e=${T0 + 99 * DAY}`); // stretching the expiry breaks the signature
   assert.equal((await download(dlPost(later), env, { now: T0 + 2000, fetchImpl })).status, 400);
-  env.DB.raw.prepare("UPDATE subscribers SET status = 'unsubscribed'").run();
+  env.DB.raw.prepare("UPDATE subscribers SET status = 'pending'").run();
   assert.equal((await download(dlPost(url), env, { now: T0 + 2000, fetchImpl })).status, 400);
+});
+
+test("after unsubscribing, the link still works until it expires, but sends no new link", async () => {
+  const { env, url, exp, sent, fetchImpl } = await confirmed();
+  env.DB.raw.prepare("UPDATE subscribers SET status = 'unsubscribed'").run();
+  const res = await download(dlPost(url), env, { now: T0 + 2000, fetchImpl });
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), "PK-zip-bytes");
+  const late = await download(new Request(url), env, { now: exp + 1, fetchImpl });
+  assert.equal(late.status, 410);
+  assert.doesNotMatch(await late.text(), /value="resend"/);
+  const before = sent.length;
+  const re = await download(dlPost(url, "action=resend"), env, { now: exp + 2, fetchImpl });
+  assert.notEqual(re.status, 200);
+  assert.equal(sent.length, before, "no mail to someone who unsubscribed");
 });
 
 test("a link works 5 times, expires after 7 days, and can send a fresh link to the same address", async () => {
