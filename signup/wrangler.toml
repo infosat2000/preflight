@@ -26,10 +26,10 @@ PUBLIC_BASE = "https://signup.forestlife.dev"
 SITE_BASE = "https://blackboxblast.com"
 ALLOWED_ORIGINS = "https://blackboxblast.com,https://feat-preflight-page.blackbox-blast.pages.dev"   # 2つ目は試し用のプレビュー。公開のときに外す
 MAIL_FROM = "Blackbox Blast（FOREST LIFE*） <preflight@send.forestlife.dev>"
-MAIL_REPLY_TO = ""
+MAIL_REPLY_TO = "info.forestlife.ai@gmail.com"   # forestlife.dev は受信できないので、返信はここへ
 SENDER_NAME = "FOREST LIFE*"
-SENDER_ADDRESS = ""     # GMO オフィスサポートの住所（FOREST LIFE* 宛てで受け取れると確かめてから）
-CONTACT = ""            # 問い合わせ用のメールアドレス
+SENDER_ADDRESS = "〒542-0081 大阪府大阪市中央区南船場3丁目2番22号 おおきに南船場ビル205"   # FOREST LIFE* の特商法の表示と同じ
+CONTACT = "info.forestlife.ai@gmail.com"
 DOWNLOAD_URL = ""       # ダウンロードの URL（リポジトリを公開する方法が決まってから）
 
 # 秘密の値（wrangler secret put <名前> で入れる）:
