@@ -166,8 +166,8 @@ SELF, HELP = "self", "help"
 
 OPEN_SETTINGS = t("画面左上の Apple メニュー から「システム設定」を開きます",
                   "Open the Apple menu  at the top left and choose System Settings")
-RECHECK = t("直したら、Preflight をもう一度開いて点検します。直っていれば「前回の点検から変わったこと」に出ます",
-            "When you're done, open Preflight again to re-check. If it worked, it shows up under the changes since the last check")
+RECHECK = t("直したら、BB Preflight をもう一度開いて点検します。直っていれば「前回の点検から変わったこと」に出ます",
+            "When you're done, open BB Preflight again to re-check. If it worked, it shows up under the changes since the last check")
 
 
 STILL_LISTED = t("この方法では待ち受けそのものは残るので、次の点検でも「確認しておく」に出ます。ブロックしてあれば、それで大丈夫です",
