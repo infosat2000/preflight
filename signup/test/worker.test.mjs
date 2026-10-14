@@ -116,7 +116,7 @@ test("one IP gets at most 5 sign-ups an hour", async () => {
   assert.equal((await subscribe(post(good({ email: "u9@example.com" }), { ip: "198.51.100.7" }), env, { now: T0 + 10, fetchImpl })).status, 200);
 });
 
-test("signing up again soon does not resend, and an active address gets nothing new", async () => {
+test("signing up again soon does not resend, and an active address gets no new confirm mail", async () => {
   const { env, sent, fetchImpl } = setup();
   await subscribe(post(good()), env, { now: T0, fetchImpl });
   await subscribe(post(good()), env, { now: T0 + 60_000, fetchImpl });
@@ -127,7 +127,8 @@ test("signing up again soon does not resend, and an active address gets nothing 
   const before = sent.length;
   const res = await subscribe(post(good()), env, { now: T0 + DAY, fetchImpl });
   assert.equal(res.status, 200, "same answer, so nobody can tell the address is registered");
-  assert.equal(sent.length, before);
+  assert.equal(sent.length, before + 1);
+  assert.ok(!/confirm\?t=/.test(sent.at(-1).text) && dlFrom(sent.at(-1)), "a download mail, not another confirm mail");
 });
 
 test("confirm activates, sends the welcome mail with the download and a working one-click unsubscribe", async () => {
@@ -387,4 +388,18 @@ test("in dry-run, only mails to TEST_ADDRESS show their links in the log", async
   }
   assert.match(logs[0], /confirm\?t=[0-9a-f]{48}/);
   assert.match(logs[1], /confirm\?t=<redacted>/);
+});
+
+test("signing up again while confirmed resends the download mail, at most every 10 minutes", async () => {
+  const { env, sent, fetchImpl } = await confirmed();
+  const before = sent.length;
+  const again = await subscribe(post(good()), env, { now: T0 + 5000, fetchImpl });
+  assert.equal(again.status, 200);
+  assert.deepEqual(await again.json(), { ok: true }); // same answer as for a new address
+  assert.equal(sent.length, before + 1);
+  assert.ok(dlFrom(sent.at(-1)), "the resent mail carries a fresh download link");
+  await subscribe(post(good()), env, { now: T0 + 6000, fetchImpl });
+  assert.equal(sent.length, before + 1, "no second mail within 10 minutes");
+  await subscribe(post(good()), env, { now: T0 + 5000 + 10 * 60_000 + 1, fetchImpl });
+  assert.equal(sent.length, before + 2);
 });

@@ -237,7 +237,19 @@ export async function subscribe(request, env, { now = Date.now(), fetchImpl = fe
 
   const existing = await db.prepare("SELECT * FROM subscribers WHERE email = ?").bind(email).first();
   await logEvent(db, email, "signup", lang, ipHash, now);
-  if (existing && existing.status === "active") return ok;
+  if (existing && existing.status === "active") {
+    // 案内メールをなくした人が申し込み直したら、新しいリンクを送り直す（10分に1回まで）。
+    // 返事は誰にでも同じ ok なので、登録済みかどうかは外から分からない
+    const last = await db.prepare("SELECT MAX(at) AS at FROM events WHERE email = ? AND kind = 'relink'").bind(email).first();
+    if (last && last.at && now - Date.parse(last.at) < RELINK_GAP) return ok;
+    try {
+      await sendEmail(env, s, { ...existing }, "welcome", { downloadUrl: await downloadLink(env, s, existing, now), idempotencyKey: `relink-${existing.id}-${now}` }, fetchImpl);
+      await logEvent(db, email, "relink", null, null, now);
+    } catch (err) {
+      console.error("relink mail failed", err && err.message);
+    }
+    return ok;
+  }
   if (existing && existing.status === "pending" && existing.confirm_sent_at && now - Date.parse(existing.confirm_sent_at) < RESEND_GAP) return ok;
 
   const token = randomToken();
