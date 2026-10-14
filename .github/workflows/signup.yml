@@ -1,0 +1,25 @@
+# メール登録の Worker（signup/）のテスト。Resend と Turnstile には接続しない。
+name: signup worker
+
+on:
+  push:
+    branches: [main]
+    paths: ["signup/**", ".github/workflows/signup.yml"]
+  pull_request:
+    paths: ["signup/**", ".github/workflows/signup.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tests
+        working-directory: signup
+        run: node --test test/worker.test.mjs

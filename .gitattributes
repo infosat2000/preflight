@@ -1,0 +1,6 @@
+# 配る zip（git archive）に入れないもの。zip は signup/upload-zip.sh で作る
+/signup export-ignore
+/tests export-ignore
+/.github export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
