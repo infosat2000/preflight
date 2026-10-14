@@ -261,3 +261,13 @@ test("live mode refuses to send while the sender address or contact is missing",
   assert.equal(res.status, 502);
   assert.equal(sent.length, 0);
 });
+
+test("without its secrets the worker refuses everything, even in dry-run", async () => {
+  const { env } = setup({ SEND_MODE: "dry-run", TURNSTILE_SECRET: "" });
+  const res = await worker.fetch(post(good()), env);
+  assert.equal(res.status, 503);
+  assert.equal(env.DB.raw.prepare("SELECT COUNT(*) AS n FROM subscribers").get().n, 0);
+  const { env: env2, fetchImpl } = setup({ SEND_MODE: "dry-run", TURNSTILE_SECRET: "" });
+  const direct = await subscribe(post(good()), env2, { now: T0, fetchImpl });
+  assert.equal(direct.status, 400, "no Turnstile secret means no sign-up");
+});

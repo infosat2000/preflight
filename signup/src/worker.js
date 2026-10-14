@@ -144,7 +144,7 @@ export async function sendEmail(env, s, sub, kind, extra = {}, fetchImpl = fetch
 }
 
 async function verifyTurnstile(env, token, ip, fetchImpl) {
-  if (!env.TURNSTILE_SECRET) return env.SEND_MODE !== "live"; // 本番では必須
+  if (!env.TURNSTILE_SECRET) return false; // 試し運転でも必須（無いまま外に出しても、誰も登録できないようにする）
   if (typeof token !== "string" || !token || token.length > 2048) return false;
   const form = new FormData();
   form.append("secret", env.TURNSTILE_SECRET);
@@ -313,6 +313,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
+      // 秘密の値がそろうまでは、何も受け付けない
+      if (!env.TOKEN_SECRET || !env.TURNSTILE_SECRET || !env.IP_HASH_SALT) return json({ error: "not_ready" }, 503);
       if (url.pathname === "/subscribe") {
         const origin = request.headers.get("Origin") || "";
         if (request.method === "OPTIONS") {

@@ -14,7 +14,7 @@ routes = [
 [[d1_databases]]
 binding = "DB"
 database_name = "preflight-signup"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"   # wrangler d1 create の結果を入れる
+database_id = "9afbcc76-c70a-4863-bc1d-e0d2448ff3a7"   # 2026-10-14 作成（APAC）。秘密ではない
 
 # 1時間に1回、3日後・7日後の案内と、古い記録の片付けをする
 [triggers]
