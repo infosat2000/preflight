@@ -1,4 +1,4 @@
-# Preflight（FOREST LIFE*）— Blackbox Blast Edition
+# BB Preflight（FOREST LIFE*）
 
 **Mac の実測結果から脅威モデルを自動で作り、IPA の注意喚起と 221 本の脅威ルールで点検するツール**
 
@@ -6,7 +6,7 @@
 その結果から [CyberRiskScape](https://github.com/takashi-ohmoto-git/CyberRiskScape)（OSS の脅威モデリングツール）の構成図を自動生成して評価します。
 前回との差分を取るので、「知らないうちに増えた入口」に気付けます。
 
-FOREST LIFE* が作り、[Blackbox Blast](https://blackboxblast.com/) で紹介している点検ツールです（Blackbox Blast Edition）。対象は**1人〜数人の事業者が使う Mac 1台**と、それにつながる公開サイト・外部サービスです。
+FOREST LIFE* が作り、[Blackbox Blast](https://blackboxblast.com/) で紹介している点検ツールです。対象は**1人〜数人の事業者が使う Mac 1台**と、それにつながる公開サイト・外部サービスです。
 
 ## 効くところ・効かないところ
 

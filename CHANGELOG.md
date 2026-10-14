@@ -10,6 +10,7 @@
 - 起動ボタンの名前を「BB Preflight.app」「BB Preflight Diagram.app」に変える（BB は Blackbox Blast Edition の印）。setup.sh を実行すると、前の名前（Blackbox Blast Preflight*.app、Preflight*.app）のうち、この setup.sh が作ったものは片付ける。データの置き場所（~/.bb-preflight）と環境変数（BB_PREFLIGHT_*）は変えない。
 - 起動ボタンのバンドルIDを dev.forestlife.preflight（.diagram）に変える。前の名前・前のバンドルIDの起動ボタンは、リポジトリのフォルダを移したあとでも setup.sh が片付ける（この setup.sh が作ったものだけ）。
 - リポジトリの置き場所を infosat2000/preflight に移した。
+- 呼び名を「BB Preflight」にそろえる。レポートの見出しと末尾、起動時の表示、README・NOTICE から「Blackbox Blast Edition」を外す。作り手と著作権は FOREST LIFE* のまま。ファイル名・フォルダ名・環境変数は変えない。
 
 ## [0.9.0] - 2026-10-13
 
