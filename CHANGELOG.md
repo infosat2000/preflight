@@ -5,7 +5,7 @@
 
 ## [Unreleased]
 
-## [1.0.1] - 未定
+## [1.0.1] - 2026-10-18
 
 ### 変更
 - 呼び名を「BB Preflight」にそろえる。レポートの見出しと末尾、起動時の表示、README・NOTICE から「Blackbox Blast Edition」を外す。作り手と著作権は FOREST LIFE* のまま。ファイル名・フォルダ名・環境変数は変えない。
