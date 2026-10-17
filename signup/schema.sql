@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS subscribers (
   created_at      TEXT NOT NULL,
   confirmed_at    TEXT,
   unsubscribed_at TEXT,
-  step            INTEGER NOT NULL DEFAULT 0, -- 送った案内メールの段階（1 = 3日後、2 = 7日後）
+  step            INTEGER NOT NULL DEFAULT 0, -- 送った案内メールの段階（1 = 3日後）
   last_sent_at    TEXT                       -- 最後にメールを送った日時（同意の記録を残す期間の起点）
 );
 

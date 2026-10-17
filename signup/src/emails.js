@@ -39,14 +39,6 @@ const T = {
         "CAUTION（黄）: 確認しておきたいところです。自分で使っている機能なら、そのままで構いません。「このままでよい場合」の欄を見て判断してください。",
         "CLEAR（緑）: 見た範囲で、気になるところはありませんでした。安全の保証ではありません。",
         "直したら、BB Preflight をもう一度開いて点検してください。直っていれば「前回の点検から変わったこと」に出ます。",
-      ],
-    },
-    step2: {
-      subject: "点検して、直すところまでお手伝いします",
-      body: (v) => [
-        "BB Preflight の結果で、自分で直すのが不安なところはありませんでしたか。",
-        "FOREST LIFE* では、Mac の点検と、見つかったところを直すお手伝いをしています。AI エージェントの設定や、公開しているサイトの入口も一緒に見ます。",
-        `ご相談は、このメールへの返信か、${v.contact} からどうぞ。`,
         "このメールで、登録のときにお伝えした案内はひと区切りです。このあとは、新しい版や、注意が必要なセキュリティ情報があるときだけお送りします。",
       ],
     },
@@ -95,14 +87,6 @@ const T = {
         "CAUTION (yellow): worth a look. If it's a feature you use on purpose, you can leave it. The \"when it's fine to leave\" line helps you decide.",
         "CLEAR (green): nothing stood out in what BB Preflight looked at. It is not a guarantee of safety.",
         "After fixing something, open BB Preflight again and run the check. If it worked, the change shows up under \"Changes since the last check\".",
-      ],
-    },
-    step2: {
-      subject: "We can check your Mac with you and help fix it",
-      body: (v) => [
-        "Did your BB Preflight results show anything you'd rather not fix on your own?",
-        "FOREST LIFE* offers Mac check-ups and help fixing what they find, including AI agent settings and the doors your public sites leave open.",
-        `To ask, reply to this email or contact ${v.contact}.`,
         "This is the last of the emails we mentioned when you signed up. From now on, we'll only write when there's a new version or a security issue worth knowing about.",
       ],
     },
@@ -119,7 +103,7 @@ const T = {
   },
 };
 
-// kind: 'confirm' | 'welcome' | 'step1' | 'step2'
+// kind: 'confirm' | 'welcome' | 'step1'
 export function renderEmail(kind, lang, v) {
   const t = T[lang] || T.ja;
   const m = t[kind];

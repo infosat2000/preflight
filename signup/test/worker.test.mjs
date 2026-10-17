@@ -185,26 +185,24 @@ test("unsubscribe GET only asks; a wrong token is refused", async () => {
   assert.equal(await unsubToken(env, Number(id), "taro@example.com"), t);
 });
 
-test("cron sends day 3 and day 7 mails once each, and never after unsubscribing", async () => {
+test("cron sends the day 3 mail once, never after unsubscribing, and nothing after it", async () => {
   const { env, sent, fetchImpl } = setup();
   await subscribe(post(good()), env, { now: T0, fetchImpl });
   await subscribe(post(good({ email: "hanako@example.com", lang: "en" })), env, { now: T0, fetchImpl });
   await confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(sent[0])}`), env, { now: T0, fetchImpl });
+  // Hanako confirms, then unsubscribes from the welcome mail before day 3
   await confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(sent[1])}`), env, { now: T0, fetchImpl });
   const n = sent.length;
+  const [, hid, ht] = unsubFrom(sent[n - 1]);
+  await unsubscribe(new Request(`https://signup.example.dev/unsubscribe?id=${hid}&t=${ht}`, { method: "POST" }), env, { now: T0 + DAY });
   assert.deepEqual((await runScheduled(env, { now: T0 + STEPS[0] - 1, fetchImpl })).sent, []);
   const r1 = await runScheduled(env, { now: T0 + STEPS[0], fetchImpl });
-  assert.equal(r1.sent.length, 2);
-  assert.match(sent[n + 1].subject, /Reading your BB Preflight results/);
-  assert.deepEqual((await runScheduled(env, { now: T0 + STEPS[0] + 3600_000, fetchImpl })).sent, [], "not twice");
-  // Hanako unsubscribes before day 7
-  const [, id, t] = unsubFrom(sent[n + 1]);
-  await unsubscribe(new Request(`https://signup.example.dev/unsubscribe?id=${id}&t=${t}`, { method: "POST" }), env, { now: T0 + 4 * DAY });
-  const r2 = await runScheduled(env, { now: T0 + STEPS[1], fetchImpl });
-  assert.equal(r2.sent.length, 1);
+  assert.equal(r1.sent.length, 1);
   assert.deepEqual(sent.at(-1).to, ["taro@example.com"]);
-  assert.match(sent.at(-1).subject, /お手伝い/);
-  assert.match(sent.at(-1).text, /hello@example\.com/);
+  assert.match(sent.at(-1).subject, /結果の読み方/);
+  assert.match(sent.at(-1).text, /ひと区切り/);
+  assert.deepEqual((await runScheduled(env, { now: T0 + STEPS[0] + 3600_000, fetchImpl })).sent, [], "not twice");
+  assert.deepEqual((await runScheduled(env, { now: T0 + 30 * DAY, fetchImpl })).sent, [], "nothing after day 3");
 });
 
 test("cron deletes stale pending sign-ups and, after the keeping period, unsubscribed records", async () => {
@@ -255,7 +253,7 @@ test("emails escape HTML and English mails carry the English footer", () => {
   const ja = renderEmail("welcome", "ja", v);
   assert.match(ja.html, /&lt;b&gt;addr&lt;\/b&gt;/);
   assert.doesNotMatch(ja.html, /<b>addr/);
-  const en = renderEmail("step2", "en", v);
+  const en = renderEmail("step1", "en", v);
   assert.match(en.text, /Unsubscribe: https:\/\/x\/u/);
   assert.match(en.text, /Sender: FOREST LIFE\*/);
   const c = renderEmail("confirm", "en", v);
