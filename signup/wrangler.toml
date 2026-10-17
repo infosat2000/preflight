@@ -1,0 +1,47 @@
+# Preflight のメール登録（FOREST LIFE* の Cloudflare アカウントに置く Worker）
+# 手順は README.md。秘密の値（API キーなど）はここに書かず、wrangler secret put で入れる。
+
+name = "preflight-signup"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false   # workers.dev では公開しない。下の routes の独自ドメインだけで受ける
+
+# 受け口のドメイン（FOREST LIFE* 側。forestlife.dev の DNS が FOREST LIFE* の Cloudflare にあること）
+routes = [
+  { pattern = "signup.forestlife.dev", custom_domain = true },
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "preflight-signup"
+database_id = "9afbcc76-c70a-4863-bc1d-e0d2448ff3a7"   # 2026-10-14 作成（APAC）。秘密ではない
+
+# 配る zip の置き場（非公開。r2.dev の公開 URL も独自ドメインもつながない）。受け口だけが、確認済みの人に渡す
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "preflight-downloads"
+
+# 1時間に1回、3日後・7日後の案内と、古い記録の片付けをする
+[triggers]
+crons = ["17 * * * *"]
+
+[vars]
+SEND_MODE = "dry-run"   # 準備がすべて済んだら最後に "live" にする。それまではメールを送らない
+PUBLIC_BASE = "https://signup.forestlife.dev"
+SITE_BASE = "https://blackboxblast.com"
+ALLOWED_ORIGINS = "https://blackboxblast.com,https://feat-preflight-page.blackbox-blast.pages.dev"   # 2つ目は試し用のプレビュー。公開のときに外す
+MAIL_FROM = "Blackbox Blast（FOREST LIFE*） <preflight@send.forestlife.dev>"
+MAIL_REPLY_TO = "info.forestlife.ai@gmail.com"   # forestlife.dev は受信できないので、返信はここへ
+SENDER_NAME = "FOREST LIFE*"
+SENDER_ADDRESS = "〒542-0081 大阪府大阪市中央区南船場3丁目2番22号 おおきに南船場ビル205"   # FOREST LIFE* の特商法の表示と同じ
+CONTACT = "info.forestlife.ai@gmail.com"
+DOWNLOAD_KEY = "latest/Preflight.zip"   # R2 の中で、いま配る zip。upload-zip.sh が置き換える
+DOWNLOAD_NAME = "BB-Preflight.zip"       # 受け取った人の手元での名前
+TEST_ADDRESS = ""                       # 試し運転のときだけ、このアドレス宛てのリンクをログに伏せずに出す。本番の前に空に戻す
+SOURCE_URL = ""                         # リポジトリを公開する日に https://github.com/infosat2000/preflight を入れる
+
+# 秘密の値（wrangler secret put <名前> で入れる）:
+#   RESEND_API_KEY    Resend の API キー（送信だけの権限、このドメインだけ）
+#   TURNSTILE_SECRET  Turnstile のシークレットキー
+#   TOKEN_SECRET      配信停止とダウンロードのリンクの署名用。openssl rand -hex 32 で作る
+#   IP_HASH_SALT      IP をハッシュにするときの塩。openssl rand -hex 32 で作る
