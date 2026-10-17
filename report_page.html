@@ -132,7 +132,6 @@ h2 .eyebrow{color:var(--accent-ink)}
 .tasks{display:grid;gap:12px}
 .task{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;animation:rise .5s cubic-bezier(.2,.7,.2,1) backwards}
 .task.flash,.list li.flash{animation:flash 1.4s ease-out}
-.task,.list li{scroll-margin-top:calc(72px + env(safe-area-inset-top,0px))}
 .task header{display:flex;gap:10px;align-items:flex-start}
 .task header > *{min-width:0}
 .pill{flex:none;font:700 11px/1 var(--mono);letter-spacing:.08em;border-radius:999px;padding:6px 10px;margin-top:2px}
@@ -462,8 +461,10 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
 
   function jump(cat) {
     var t = firstTarget(cat); if (!t) return;
-    // stop at the card's title (scroll-margin keeps it clear of the sticky bar)
-    t.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    // Stop at the card's title, just under the sticky bar. Scroll this page only (not a page
+    // that embeds the report), so the result is the same in every browser.
+    var bar = document.querySelector(".bar"), gap = (bar ? bar.getBoundingClientRect().bottom : 0) + 14;
+    window.scrollTo({ top: Math.max(0, t.getBoundingClientRect().top + window.pageYOffset - gap), behavior: reduce ? "auto" : "smooth" });
     t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
     try { t.focus({ preventScroll: true }); } catch (e) { /* older Safari */ }
   }
