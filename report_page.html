@@ -223,7 +223,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
 </style>
 
 <header class="bar">
-  <span class="brand"><span class="rec" aria-hidden="true"></span>Preflight<span class="long">&nbsp;· Blackbox Blast Edition</span><span class="ver" id="ver-bar"></span></span>
+  <span class="brand"><span class="rec" aria-hidden="true"></span>BB Preflight<span class="long">&nbsp;· by FOREST LIFE*</span><span class="ver" id="ver-bar"></span></span>
   <span class="sp"></span>
   <div class="lang" role="group" aria-label="Language">
     <button type="button" id="btn-ja" data-lang-btn="ja" aria-pressed="true">JA</button>
@@ -251,7 +251,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
         <path d="M378 540 L482 642 L668 430" fill="none" stroke="#FF6A00" stroke-width="104" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <div>
-        <div class="eyebrow">Preflight · Blackbox Blast Edition</div>
+        <div class="eyebrow">BB Preflight · by FOREST LIFE*</div>
         <h1 data-i18n="h1"></h1>
       </div>
     </div>
@@ -331,10 +331,10 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     </div>
   </section>
   <footer>
-    <div>PREFLIGHT BY FOREST LIFE* · BLACKBOX BLAST EDITION · RULE-BASED · NOTHING LEAVES THIS MAC</div>
+    <div>BB PREFLIGHT BY FOREST LIFE* · RULE-BASED · NOTHING LEAVES THIS MAC</div>
     <div class="mark" lang="en">
       <svg viewBox="0 0 116 116" aria-hidden="true"><rect width="116" height="116" rx="22" fill="#ff7a1a"/><rect x="36" y="36" width="44" height="44" rx="7" fill="#0c0d0f"/></svg>
-      <span><b>Blackbox Blast™ Edition</b> · <span id="ver-foot"></span>© 2026 FOREST LIFE*. All rights reserved.</span>
+      <span><b>BB Preflight</b> · <span id="ver-foot"></span>© 2026 FOREST LIFE*. All rights reserved.</span>
     </div>
   </footer>
 </div>
@@ -386,7 +386,7 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     },
     en: {
       demo: "This is a sample. Every result shown is dummy data, not from a real Mac.",
-      h1: "Preflight results for this Mac", g_red: "Fix now", g_yellow: "Check", g_ok: "Fine",
+      h1: "BB Preflight results for this Mac", g_red: "Fix now", g_yellow: "Check", g_ok: "Fine",
       to_detail: "See the technical details ↓", hint: "Tap an item to jump to its explanation.",
       s_todo: "What to do", s_diff: "Changes since the last check", s_ok: "Checked and fine",
       s_limits: "What this check can't tell you", s_detail: "Technical details (for experts)", detail_open: "Open the technical details",
@@ -461,7 +461,10 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
 
   function jump(cat) {
     var t = firstTarget(cat); if (!t) return;
-    t.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    // Stop at the card's title, just under the sticky bar. Scroll this page only (not a page
+    // that embeds the report), so the result is the same in every browser.
+    var bar = document.querySelector(".bar"), gap = (bar ? bar.getBoundingClientRect().bottom : 0) + 14;
+    window.scrollTo({ top: Math.max(0, t.getBoundingClientRect().top + window.pageYOffset - gap), behavior: reduce ? "auto" : "smooth" });
     t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash");
     try { t.focus({ preventScroll: true }); } catch (e) { /* older Safari */ }
   }
@@ -557,12 +560,12 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
   function render() {
     var U = UI[lang];
     root.lang = lang;
-    document.title = lang === "ja" ? "Preflight レポート" : "Preflight Report";
+    document.title = lang === "ja" ? "BB Preflight レポート" : "BB Preflight Report";
     ["ja", "en"].forEach(function (l) { $("btn-" + l).setAttribute("aria-pressed", String(l === lang)); });
     Array.prototype.forEach.call(document.querySelectorAll("[data-i18n]"), function (n) { n.textContent = U[n.getAttribute("data-i18n")]; });
     if (D.demo) $("demo").hidden = false;
     $("ver-bar").textContent = D.version ? "v" + D.version : "";
-    $("ver-foot").textContent = D.version ? "Preflight v" + D.version + " · " : "";
+    $("ver-foot").textContent = D.version ? "BB Preflight v" + D.version + " · " : "";
     $("when").textContent = D.measuredAt ? U.measured + D.measuredAt : "";
     $("code").textContent = CODE[D.verdict];
     $("code").className = "code " + D.verdict;

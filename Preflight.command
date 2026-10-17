@@ -11,7 +11,7 @@ finish() {
   exit "$1"
 }
 
-echo "== Preflight（FOREST LIFE*）Blackbox Blast Edition =="
+echo "== BB Preflight（FOREST LIFE*） =="
 if [ ! -f "$DATA/inventory.json" ]; then
   echo "初回のセットアップをします。"
   ./setup.sh || { echo "セットアップに失敗しました。上のメッセージを確認してください。"; finish 1; }

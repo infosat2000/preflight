@@ -15,7 +15,7 @@ CRS_COMMIT="71834024f8f7ad9c1bc134dfbe2ea330316dbcd6"
 DEST="$HERE/vendor/CyberRiskScape"
 # このツールの版（VERSION ファイルが唯一の置き場所）
 VERSION="$(tr -d '[:space:]' < "$HERE/VERSION")"
-echo "Preflight（FOREST LIFE*）Blackbox Blast Edition v$VERSION"
+echo "BB Preflight（FOREST LIFE*）v$VERSION"
 
 WITH_ENGINE="${BB_PREFLIGHT_ENGINE:-}"
 [ "${1:-}" = "--with-engine" ] && WITH_ENGINE=1

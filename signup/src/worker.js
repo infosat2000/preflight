@@ -12,14 +12,14 @@
 import { renderEmail } from "./emails.js";
 
 export const CONSENT = {
-  ja: "メールアドレスを登録すると、ダウンロードの案内のほか、更新のお知らせと点検サービスのご案内をお送りします。いつでも配信を止められます。",
-  en: "When you sign up, we'll send you the download, plus news about updates and our check-up service. You can unsubscribe at any time.",
+  ja: "メールアドレスを登録すると、ダウンロードの案内のほか、使い方のご案内と、更新や注意が必要なセキュリティ情報のお知らせをお送りします。いつでも配信を止められます。",
+  en: "When you sign up, we'll send you the download, plus a short guide to using it and news about updates and security issues worth knowing about. You can unsubscribe at any time.",
 };
 
 const DAY = 86400_000;
 export const CONFIRM_TTL = 7 * DAY;     // 確認リンクの有効期限
 export const RESEND_GAP = 10 * 60_000;  // 確認メールを送り直すまでの間隔
-export const STEPS = [3 * DAY, 7 * DAY]; // 確認から何日後に案内を送るか（step 1, 2）
+export const STEPS = [3 * DAY]; // 確認から何日後に案内を送るか（step 1）
 export const KEEP_AFTER = 31 * DAY;     // 停止のあと、同意の記録を残す期間（最後の送信または停止から）
 export const DOWNLOAD_TTL = 7 * DAY;    // ダウンロードのリンクの有効期限
 export const DOWNLOAD_LIMIT = 5;        // 1つのリンクで受け取れる回数
