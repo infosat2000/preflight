@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import worker, { subscribe, confirm, unsubscribe, download, downloadLink, runScheduled, unsubToken, maskEmail, DOWNLOAD_TTL, DOWNLOAD_LIMIT, redactTokens, CONSENT, STEPS, CONFIRM_TTL, KEEP_AFTER } from "../src/worker.js";
-import { renderEmail } from "../src/emails.js";
+import { renderEmail, NEWS } from "../src/emails.js";
 
 const SCHEMA = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
 const DAY = 86400_000;
@@ -24,9 +24,12 @@ function d1() {
   return { prepare: (sql) => wrap(sql), raw: db };
 }
 
-// R2 の get だけの薄い代わり
-function r2(files) {
-  return { get: async (key) => (key in files ? { body: files[key], size: files[key].length } : null) };
+// R2 の get と head だけの薄い代わり（uploaded は置いた時刻）
+function r2(files, uploaded = Date.parse("2026-10-01T00:00:00Z")) {
+  return {
+    get: async (key) => (key in files ? { body: files[key], size: files[key].length } : null),
+    head: async (key) => (key in files ? { size: files[key].length, uploaded: new Date(uploaded) } : null),
+  };
 }
 
 function setup(over = {}) {
@@ -400,4 +403,92 @@ test("signing up again while confirmed resends the download mail, at most every 
   assert.equal(sent.length, before + 1, "no second mail within 10 minutes");
   await subscribe(post(good()), env, { now: T0 + 5000 + 10 * 60_000 + 1, fetchImpl });
   assert.equal(sent.length, before + 2);
+});
+
+// ------------------------------------------------------------ 新しい版のお知らせ
+
+const NEWS_AT = Date.parse(NEWS["1.2.0"].notBefore);
+
+// 3人を確認済みにする（taro・hanako(en)・jiro）。jiro は配信を止める
+async function threeSubscribers(env, sent, fetchImpl, at) {
+  for (const [email, lang] of [["taro@example.com", "ja"], ["hanako@example.com", "en"], ["jiro@example.com", "ja"]]) {
+    await subscribe(post(good({ email, lang }), { ip: `203.0.113.${sent.length + 10}` }), env, { now: at, fetchImpl });
+    await confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(sent.at(-1))}`), env, { now: at, fetchImpl });
+  }
+  const [, id, t] = unsubFrom(sent.at(-1));
+  await unsubscribe(new Request(`https://signup.example.dev/unsubscribe?id=${id}&t=${t}`, { method: "POST" }), env, { now: at });
+}
+
+test("news waits until the zip is replaced, then goes once to each active subscriber with a personal link", async () => {
+  const before = NEWS_AT - 3600_000; // day 3 mail is not due yet in this test
+  const { env, sent, fetchImpl } = setup({ NEWS: "1.2.0", NEWS_PER_RUN: "1", DOWNLOADS: r2({ "latest/Preflight.zip": "PK-old" }, before) });
+  await threeSubscribers(env, sent, fetchImpl, before);
+  const now = NEWS_AT + DAY;
+  const n0 = sent.length;
+  const wait = await runScheduled(env, { now, fetchImpl });
+  assert.equal(wait.newsWaiting, "zip not replaced yet");
+  assert.equal(sent.length, n0, "nothing while the old zip is in place");
+
+  env.DOWNLOADS = r2({ "latest/Preflight.zip": "PK-new" }, NEWS_AT + 3600_000);
+  const r1 = await runScheduled(env, { now, fetchImpl });
+  assert.equal(r1.sent.length, 1, "NEWS_PER_RUN per run");
+  await runScheduled(env, { now: now + 3600_000, fetchImpl });
+  assert.deepEqual((await runScheduled(env, { now: now + 7200_000, fetchImpl })).sent, [], "not twice, and never to jiro");
+  const news = sent.slice(n0);
+  assert.deepEqual(news.map((m) => m.to[0]).sort(), ["hanako@example.com", "taro@example.com"]);
+  const ja = news.find((m) => m.to[0] === "taro@example.com");
+  const en = news.find((m) => m.to[0] === "hanako@example.com");
+  assert.match(ja.subject, /1\.2\.0/);
+  assert.match(ja.text, /20項目/);
+  assert.match(ja.text, /download\?id=\d+&e=\d+&t=[0-9a-f]{64}/);
+  assert.match(ja.text, /配信の停止: https:\/\/signup\.example\.dev\/unsubscribe/);
+  assert.match(ja.text, /所在地: 東京都テスト区1-2-3/);
+  assert.ok(ja.headers["List-Unsubscribe"]);
+  assert.match(en.subject, /1\.2\.0 is out/);
+  assert.match(en.text, /Unsubscribe: /);
+  assert.equal(ja.key, `news-1.2.0-1`);
+  // the personal link in the news mail hands over the new zip
+  const [, q] = ja.text.match(/download\?(id=\d+&e=\d+&t=[0-9a-f]{64})/);
+  const res = await download(new Request(`https://signup.example.dev/download?${q}`, { method: "POST" }), env, { now, fetchImpl });
+  assert.equal(await res.text(), "PK-new");
+});
+
+test("news skips people who signed up or got a new link after the zip was replaced, and is off without NEWS", async () => {
+  const swapped = NEWS_AT + 3600_000;
+  const { env, sent, fetchImpl } = setup({ DOWNLOADS: r2({ "latest/Preflight.zip": "PK-new" }, swapped) });
+  await subscribe(post(good()), env, { now: NEWS_AT - DAY, fetchImpl });
+  await confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(sent.at(-1))}`), env, { now: NEWS_AT - DAY, fetchImpl });
+  assert.deepEqual((await runScheduled(env, { now: swapped + DAY, fetchImpl })).sent.filter((x) => x.includes("news")), [], "off without NEWS");
+  env.NEWS = "1.2.0";
+  // taro asks for a new link after the swap, so already has 1.2.0
+  await subscribe(post(good()), env, { now: swapped + 60_000, fetchImpl });
+  // hanako signs up after the swap
+  await subscribe(post(good({ email: "hanako@example.com" }), { ip: "203.0.113.77" }), env, { now: swapped + 60_000, fetchImpl });
+  await confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(sent.at(-1))}`), env, { now: swapped + 60_000, fetchImpl });
+  assert.deepEqual((await runScheduled(env, { now: swapped + 2 * DAY, fetchImpl })).sent.filter((x) => x.includes("news")), []);
+});
+
+test("news in dry-run is only logged and not recorded, so it still goes out once live", async () => {
+  const { env, sent, fetchImpl } = setup({ NEWS: "1.2.0", DOWNLOADS: r2({ "latest/Preflight.zip": "PK-new" }, NEWS_AT + 1) });
+  await subscribe(post(good()), env, { now: NEWS_AT - DAY, fetchImpl });
+  await confirm(new Request(`https://signup.example.dev/confirm?t=${tokenFrom(sent.at(-1))}`), env, { now: NEWS_AT - DAY, fetchImpl });
+  const n0 = sent.length;
+  env.SEND_MODE = "dry-run";
+  await runScheduled(env, { now: NEWS_AT + DAY, fetchImpl });
+  assert.equal(sent.length, n0);
+  env.SEND_MODE = "live";
+  const r = await runScheduled(env, { now: NEWS_AT + DAY, fetchImpl });
+  assert.deepEqual(r.sent.filter((x) => x.includes("news")), ["1:news:1.2.0"]);
+});
+
+test("news mail HTML keeps line breaks, escapes text and has a download button", () => {
+  const v = { newsId: "1.2.0", downloadUrl: "https://x.dev/download?id=1&e=2&t=abc", unsubUrl: "https://x.dev/unsubscribe?id=1&t=z", siteBase: "https://blackboxblast.com", senderName: "F", senderAddress: "A", contact: "c@x" };
+  const ja = renderEmail("news", "ja", v);
+  assert.match(ja.html, /新しく見る6つ:<br>・自動で起動するもの/);
+  assert.match(ja.html, />ダウンロードする</);
+  assert.match(ja.text, /blackboxblast\.com\/ja\/preflight\//);
+  assert.doesNotMatch(ja.text, /CHANGELOG/, "no source link until SOURCE_URL is set");
+  assert.match(renderEmail("news", "ja", { ...v, sourceUrl: "https://github.com/infosat2000/preflight" }).text, /preflight\/blob\/main\/CHANGELOG\.md/);
+  assert.match(renderEmail("news", "en", v).html, /&quot;BB-Preflight 2&quot;/);
+  assert.throws(() => renderEmail("news", "ja", { ...v, newsId: "9.9.9" }));
 });
