@@ -157,6 +157,16 @@ def build(out, lang):
         if n.get("version"):
             L.append(T("  - npm の版: %s（12 以上は install スクリプトが標準で止まる: %s）", "  - npm version: %s (12+ blocks install scripts by default: %s)") % (
                 n["version"], T("はい", "yes") if n.get("scriptsOffByDefault") else T("いいえ", "no")))
+    u = facts.get("updates")
+    if u:
+        yn = lambda v: {True: T("オン", "on"), False: T("オフ", "off")}.get(v, T("不明", "unknown"))
+        L.append(T("- 更新: 自動確認 %s / 守りのデータ %s / macOS 本体の自動インストール %s / 未適用 %d 件 / 最後の確認 %s%s",
+                   "- Updates: auto check %s / protection data %s / auto-install macOS %s / waiting: %d / last check %s%s") % (
+            yn(u.get("check")), yn(u.get("securityData")), yn(u.get("macosAuto")), len(u.get("pending") or []),
+            (u.get("lastCheck") or "-").replace("T", " "),
+            T("（OCLP の Mac。更新は勧めない）", " (OCLP Mac: updates not suggested)") if u.get("oclp") else ""))
+    if facts.get("known"):
+        L.append(T("- known.txt で確認済みにした名前: %d 件（赤の印は外さない）", "- Names marked as yours in known.txt: %d (red flags are never hidden)") % len(facts["known"]))
     threat_lines(facts, L, T)
     L.append("")
 

@@ -182,6 +182,23 @@ STILL_LISTED = t("この方法では待ち受けそのものは残るので、�
                  "This leaves the app itself listening, so it will still appear under \"Check\" next time. Once it's blocked, that's fine")
 
 
+# 自分で作ったものを、次から外すための書き方（名前は ~/.bb-preflight/known.txt に1行ずつ）
+KNOWN_HINT = t("自分で作ったものなら、~/.bb-preflight/known.txt に上の名前を1行ずつ書くと、次の点検から「確認済み」として外れます",
+               "If you made it yourself, write the names above in ~/.bb-preflight/known.txt, one per line, and the next check lists them as confirmed")
+
+
+def known_split(facts, names):
+    """known.txt に書かれた名前と、それ以外に分ける。"""
+    known = set(facts.get("known") or []) - {UNKNOWN_APP}
+    return [n for n in names if n not in known], [n for n in names if n in known]
+
+
+def known_good(good, cat, names):
+    if names:
+        good(cat, cat_text(t("自分で確かめたもの（known.txt）として外しました: ", "Left out because you marked them as yours (known.txt): "),
+                           join([same(n) for n in names])))
+
+
 def finding(cat, level, title, what, why, how, effort=HELP, steps=None, time=None, undo=None, keep=None, ask_ai=None):
     """1件の指摘。how は直し方の要約、steps は番号付きの手順、time は目安の時間、undo は元に戻す方法、
     keep は「このままでよい場合」、ask_ai は Claude Code などに貼る依頼文（鍵の値やファイルの中身は入れない）。"""
@@ -284,7 +301,10 @@ def analyze(facts):
             normal.append(t("%s（%s）" % (app, NORMAL_APPS[app]["ja"]),
                             "%s (%s)" % (app, NORMAL_APPS[app]["en"])))
         else:
-            unknown.append(app_name(app))
+            unknown.append(app)
+    unknown, mine = known_split(facts, unknown)
+    known_good(good, "apps", mine)
+    unknown = [app_name(a) for a in unknown]
     if unknown:
         extra = t("", "")
         if nameless:
@@ -321,8 +341,8 @@ def analyze(facts):
             time=t("約5分", "About 5 min"),
             undo=t("同じ画面でアプリを選び「外部からの接続を許可」に戻します。ゴミ箱に入れたアプリは、ゴミ箱から戻せます",
                    "In the same window, set the app back to \"Allow incoming connections\". Apps in the Trash can be put back"),
-            keep=t("スマホ連携など、ほかの機器から使う機能が必要なアプリは、そのままで大丈夫です",
-                   "Apps whose features you use from other devices, like linking to your phone, are fine as they are"),
+            keep=cat_text(t("スマホ連携など、ほかの機器から使う機能が必要なアプリは、そのままで大丈夫です。",
+                            "Apps whose features you use from other devices, like linking to your phone, are fine as they are. "), KNOWN_HINT),
             ask_ai=t("このMacで、次のアプリが同じネットワークの他の機器から接続を受け付けています: %s。"
                      "それぞれ何のために待ち受けているか調べてください。自分で作ったサーバーなら、待ち受け先を 127.0.0.1 に変えて動作確認してください。"
                      "市販のアプリなら設定は変えずに、私が何をすればよいかだけ教えてください。" % join(unknown)["ja"],
@@ -450,7 +470,8 @@ def analyze(facts):
         good("keys", t("API キーなどの鍵が、調べた範囲のファイルにそのまま書かれてはいませんでした。",
                        "No API keys or other secrets were found written in plain text in the files we checked."))
 
-    jobs = facts.get("agents", {}).get("claude_launchd_jobs", [])
+    jobs, mine = known_split(facts, facts.get("agents", {}).get("claude_launchd_jobs", []))
+    known_good(good, "ai", mine)
     if jobs:
         todo.append(finding(
             "ai", YELLOW,
@@ -476,21 +497,21 @@ def analyze(facts):
                      "Once it's off, that's fine")],
             time=t("約5分", "About 5 min"),
             undo=t("同じスイッチをオンにすれば元に戻ります", "Turn the same switch back on to undo it"),
-            keep=t("自分で作った仕組みなら、そのままで大丈夫です", "If you set them up yourself, they are fine as they are"),
+            keep=cat_text(t("自分で作った仕組みなら、そのままで大丈夫です。", "If you set them up yourself, they are fine as they are. "), KNOWN_HINT),
             ask_ai=t("このMacの ~/Library/LaunchAgents に、Claude を自動で呼び出す仕組みが登録されています: %s。"
                      "それぞれ、いつ・何を読んで・どこへ送っているかを調べて、ふつうの言葉で説明してください。止めるかどうかは私が決めるので、まだ何も変えないでください。"
                      % join([same(j) for j in jobs])["ja"],
                      "On this Mac, ~/Library/LaunchAgents has jobs that start Claude automatically: %s. "
                      "For each one, find out when it runs, what it reads and where it sends things, and explain it in plain words. "
                      "I will decide whether to stop them, so don't change anything yet." % join([same(j) for j in jobs])["en"])))
-    else:
+    elif not mine:
         good("ai", t("AI を自動で呼び出す仕組みは、見つかりませんでした。",
                      "Nothing was found that starts AI on its own."))
 
     npm_findings(facts.get("npm"), todo, good)
     more_findings(facts, todo, good)
     guard_findings(facts, todo, good)
-    update_findings(facts.get("updates"), todo, good)
+    update_findings(facts.get("updates"), todo, good, facts.get("measuredAt", ""))
     threat_findings(facts, todo, good)
 
     order = {RED: 0, YELLOW: 1}
@@ -532,13 +553,12 @@ def entry_map(facts, todo):
     for app, ps in sorted(wide_listeners(facts).items()):
         if ps <= set(PORTS) or app.startswith("（root"):
             continue
-        if app in NORMAL_APPS:
+        if app in NORMAL_APPS or app in set(facts.get("known") or []):
             normal += 1
         else:
             lan.append(item("apps", app_name(app), YELLOW))
     if normal:
-        lan.append(item("apps", t("Apple の標準機能 %d 件" % normal, "%d built-in Apple feature%s" % (
-            normal, "" if normal == 1 else "s")), GREEN))
+        lan.append(item("apps", t("Apple の標準機能・確認済み %d 件" % normal, "%d built-in or confirmed" % normal), GREEN))
 
     for u in facts.get("urls", []):
         uid, url, v = u.get("id", ""), u.get("url", ""), u.get("verdict")
@@ -674,6 +694,7 @@ def more_findings(facts, todo, good):
                          "specific commands I actually use. Show me the proposed changes before editing any settings file." % where["en"])))
         wide = ap.get("mcpWide", [])
         if code or wide:
+            code = list({b["rule"]: b for b in code}.values())   # 同じ許可が複数の設定ファイルにあっても1回だけ出す
             rules = [same(b["rule"]) for b in code[:5]]
             parts = []
             if rules:
@@ -913,15 +934,94 @@ def guard_findings(facts, todo, good):
         good("guard", cat_text(join(ok), t("でした。", ".")))
 
 
-def update_findings(u, todo, good):
-    """守りのデータ（XProtect など）を自動で受け取る設定か。macOS 本体のアップデートは勧めない。
-    OCLP の Mac は、更新を意図して止めていることが多いので、注意にせず状態だけを伝える。"""
+STALE_DAYS = 30   # これより長く更新の確認が止まっていたら知らせる（OCLP 以外の Mac だけ）
+
+# OCLP の Mac にだけ出す警告。新しくするかどうかは本人が決める。こちらからは勧めない
+OCLP_WARN = t("この Mac は OCLP（OpenCore Legacy Patcher）で動いています。macOS を新しい版にすると、再起動できなくなることがあります。"
+              "新しい版を入れる前に、OCLP がその版に対応しているかを確かめ、バックアップを取ってください。",
+              "This Mac runs with OCLP (OpenCore Legacy Patcher). Moving to a newer macOS version may leave it unable to restart. "
+              "Before installing a newer version, check that OCLP supports it, and make a backup.")
+
+
+def check_age(u, measured_at):
+    """最後に更新を確認してから何日たったか。分からなければ None。"""
+    last = (u or {}).get("lastCheck")
+    if not last or not measured_at:
+        return None
+    try:
+        import datetime
+        return (datetime.datetime.fromisoformat(measured_at[:16]) - datetime.datetime.fromisoformat(last[:16])).days
+    except ValueError:
+        return None
+
+
+def update_findings(u, todo, good, measured_at=""):
+    """更新の設定と、届いたまま入っていない更新。
+    OCLP 以外の Mac: 更新がたまっている・確認が止まっているなら知らせる。
+    OCLP の Mac: 更新は勧めず、「新しい版にすると再起動できなくなることがある」と警告する。
+    macOS 本体を自動で入れる設定がオンのときだけ、オフにする手順を出す。"""
     if not u:
         return
+    oclp = u.get("oclp")
+    pending = u.get("pending") or []
+    if oclp:
+        if u.get("macosAuto") is True:
+            todo.append(finding(
+                "update", YELLOW, t("macOS の新しい版が、自動で入る設定です", "New macOS versions install automatically"),
+                t("自動アップデートの「macOS アップデートをインストール」がオンです。", "Install macOS updates is on under Automatic Updates."),
+                OCLP_WARN,
+                t("自動で入らないように、「macOS アップデートをインストール」だけをオフにします。守りのデータの設定はそのままにします。",
+                  "Turn off only Install macOS updates so nothing installs on its own. Leave the protection-data setting as it is."),
+                SELF, [OPEN_SETTINGS,
+                       t("左の一覧で「一般」を選び、「ソフトウェアアップデート」を開きます", "Choose General on the left, then Software Update"),
+                       t("「自動アップデート」の右の「i」を押し、「macOS アップデートをインストール」をオフにして「完了」を押します",
+                         "Click the (i) next to Automatic Updates, turn off Install macOS updates, and click Done"),
+                       RECHECK],
+                time=t("約1分", "About 1 min"),
+                undo=t("同じ画面で、いつでもオンに戻せます", "You can turn it back on from the same screen"),
+                keep=t("OCLP が新しい版に対応していることを確かめてから入れる、と決めているなら、オフのままにしておきます",
+                       "If you only install new versions after checking OCLP supports them, keep it off")))
+        else:
+            good("update", OCLP_WARN)
+        if pending:
+            good("update", t("届いている更新: %s。OCLP の Mac なので、こちらからは入れることを勧めません。" % join([same(x) for x in pending])["ja"],
+                             "Updates waiting: %s. On an OCLP Mac we don't suggest installing them." % join([same(x) for x in pending])["en"]))
+    else:
+        days = check_age(u, measured_at)
+        stalled = []
+        if pending:
+            stalled.append(t("入っていない更新があります: %s" % join([same(x) for x in pending])["ja"],
+                             "Some updates aren't installed yet: %s" % join([same(x) for x in pending])["en"]))
+        if u.get("check") is False:
+            stalled.append(t("更新を自動で確認する設定がオフです", "Checking for updates automatically is off"))
+        elif days is not None and days > STALE_DAYS:
+            stalled.append(t("最後に更新を確認したのは %d 日前です" % days, "The last check for updates was %d days ago" % days))
+        if stalled:
+            todo.append(finding(
+                "update", YELLOW, t("Apple の更新が止まっています", "Apple updates have stalled"),
+                t("。".join(x["ja"] for x in stalled) + "。", ". ".join(x["en"] for x in stalled) + "."),
+                t("Apple の更新には、見つかった弱点の直しが入っています。止まったままだと、知られた弱点が残ります。",
+                  "Apple's updates include fixes for known weaknesses. While they are stalled, those weaknesses stay open."),
+                t("バックアップを取ってから、システム設定 → 一般 → ソフトウェアアップデート で入れます。",
+                  "Make a backup first, then install them from System Settings → General → Software Update."),
+                SELF, [t("Time Machine などで、バックアップを取っておきます", "Make a backup first, for example with Time Machine"),
+                       OPEN_SETTINGS,
+                       t("左の一覧で「一般」を選び、「ソフトウェアアップデート」を開きます", "Choose General on the left, then Software Update"),
+                       t("表示された更新を入れます。再起動が必要なときは、作業を保存してから進めます",
+                         "Install the updates shown. If a restart is needed, save your work first"),
+                       t("「自動アップデート」の右の「i」で、「新しいアップデートがあるか確認」をオンにしておきます",
+                         "Under the (i) next to Automatic Updates, keep Check for updates turned on"),
+                       RECHECK],
+                time=t("10分〜1時間（更新の大きさによる）", "10 min to 1 hour, depending on the update"),
+                keep=t("仕事の道具が新しい版にまだ対応していないなら、対応を確かめてから入れます",
+                       "If a tool you rely on doesn't support the new version yet, check that first")))
+        elif days is not None:
+            good("update", t("入っていない Apple の更新は、見つかりませんでした（最後の確認は %d 日前）。" % days,
+                             "No Apple updates are waiting (last checked %d days ago)." % days))
     if u.get("securityData"):
         good("update", t("ウイルス対策のデータ（XProtect など）は、自動で受け取る設定です。",
                          "Malware-protection data (such as XProtect) is set to install automatically."))
-    elif u.get("oclp"):
+    elif oclp:
         good("update", t("ウイルス対策のデータを自動で受け取る設定はオフです。OCLP の Mac では、更新を意図して止めていることがあります。"
                          "意図したものなら、そのままで構いません。",
                          "Automatic install of malware-protection data is off. OCLP Macs often turn updates off on purpose. "
@@ -1015,7 +1115,7 @@ def autostart_levels(items):
 
 
 def threat_findings(facts, todo, good):
-    autostart_findings(facts.get("autostart"), todo, good)
+    autostart_findings(facts.get("autostart"), todo, good, facts.get("known"))
     disguise_findings(facts.get("disguise"), facts.get("iocUpdated", ""), todo, good)
     shell_findings(facts.get("shell"), todo, good)
     repo_findings(facts.get("openToRun"), todo, good)
@@ -1023,10 +1123,15 @@ def threat_findings(facts, todo, good):
     ext_findings(facts.get("extensions"), todo, good)
 
 
-def autostart_findings(a, todo, good):
+def autostart_findings(a, todo, good, known=None):
     if a is None:
         return
     red, yellow = autostart_levels(a.get("items") or [])
+    # known.txt で外せるのは黄色だけ。偽の名前や一時置き場など、赤の印は本人が書いても外さない
+    known = set(known or [])
+    mine = [it for it in yellow if it.get("label") in known]
+    yellow = [it for it in yellow if it.get("label") not in known]
+    known_good(good, "autostart", [it["label"] for it in mine])
     if red:
         rows = [(it["label"], flags_text(sorted(set(it["flags"]) & AUTOSTART_RED))) for it in red]
         files = join([same(it["file"]) for it in red])
@@ -1067,8 +1172,8 @@ def autostart_findings(a, todo, good):
                      "The setting file stays after you turn it off, so it will still appear next time. Once it's off, that's fine")],
             time=t("約5分", "About 5 min"),
             undo=t("同じスイッチをオンにすれば元に戻ります", "Turn the same switch back on to undo it"),
-            keep=t("自分で作ったものや、Homebrew などの開発の道具が入れたものなら、そのままで大丈夫です",
-                   "If you made it yourself, or a developer tool such as Homebrew added it, it's fine as it is")))
+            keep=cat_text(t("自分で作ったものや、Homebrew などの開発の道具が入れたものなら、そのままで大丈夫です。",
+                            "If you made it yourself, or a developer tool such as Homebrew added it, it's fine as it is. "), KNOWN_HINT)))
     if not red and not yellow:
         good("autostart", t("自動で起動するもの（%d 件）に、名前を偽ったものや、一時置き場から動くものはありませんでした。" % a.get("total", 0),
                             "None of the %d things that start on their own use a fake name or run from a temporary folder." % a.get("total", 0)))
