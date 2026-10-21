@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """実測（読み取り専用）: このMacの待ち受け・ファイアウォール・公開URL・AIエージェント周りを調べて facts.json に書く。
+居座り・偽装・開くだけで動く仕掛け・AI ツールの鍵と版・拡張機能は collect_extra.py。
 
 - 何も変更しない（kill・設定変更なし）。秘密情報の値は出力しない（ファイル名と件数のみ）。
 - /usr/bin/python3 (3.9) で動く書き方にする（3.10 以降の記法は使わない）。
@@ -20,6 +21,8 @@ import socket
 import time
 import subprocess
 import sys
+
+import collect_extra
 
 HOME = os.path.expanduser("~")
 
@@ -238,8 +241,10 @@ def npm_protection():
     """
     npm = shutil.which("npm")
     used = bool(npm) or os.path.isdir(os.path.join(HOME, ".npm"))
-    ignore = None
+    ignore, version = None, ""
     if npm:
+        m = re.search(r"^(\d+\.\d+\.\d+)", run([npm, "--version"]).strip())
+        version = m.group(1) if m else ""
         out = run([npm, "config", "get", "ignore-scripts"]).strip().lower()
         if out in ("true", "false"):
             ignore = out == "true"
@@ -274,7 +279,9 @@ def npm_protection():
             "medium": count["medium"],
             "stale": not isinstance(quick, (int, float)) or time.time() - quick > GUARD_STALE_DAYS * 86400,
         }
-    return {"used": used, "ignoreScripts": ignore, "guard": guard}
+    # npm 12 からは、依存パッケージの install スクリプトが標準で動かない（allowScripts で許したものだけ）
+    return {"used": used, "ignoreScripts": ignore, "guard": guard, "version": version,
+            "scriptsOffByDefault": bool(version) and int(version.split(".")[0]) >= 12}
 
 
 TOOL_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -364,18 +371,41 @@ def filevault():
     return {"on": on, "oclp": is_oclp(), "laptop": is_laptop()}
 
 
-def update_settings():
-    """自動で確認・入れる設定（読むだけ）。値がない項目は macOS の既定（オン）とみなす。macOS 本体の版は見ない。"""
-    def read(key):
-        out = run(["defaults", "read", "/Library/Preferences/com.apple.SoftwareUpdate", key], timeout=5).strip()
-        return None if out.startswith("ERROR") or out not in ("0", "1") else out == "1"
-    if not os.path.exists("/Library/Preferences/com.apple.SoftwareUpdate.plist"):
+SU_PLIST = "/Library/Preferences/com.apple.SoftwareUpdate.plist"
+
+
+def update_settings(path=SU_PLIST, oclp=None):
+    """自動で確認・入れる設定と、たまっている macOS の更新（読むだけ。Apple には問い合わせない）。
+    値がない項目は macOS の既定（オン）とみなす。
+
+    pending と lastCheck は、macOS が裏で確認したときに書く RecommendedUpdates・LastSuccessfulDate から読む。
+    Apple の文書に載っている値ではないので、無ければ「分からない」として扱う。"""
+    if not os.path.exists(path):
         return None
-    vals = {k: read(k) for k in ("AutomaticCheckEnabled", "CriticalUpdateInstall", "ConfigDataInstall")}
-    return {"check": vals["AutomaticCheckEnabled"] is not False,
+    try:
+        with open(path, "rb") as f:
+            d = plistlib.load(f)
+    except Exception:  # noqa: BLE001
+        d = {}
+
+    def flag(key):
+        v = d.get(key)
+        return v if isinstance(v, bool) else None if v is None else bool(v)
+    pending = []
+    for u in d.get("RecommendedUpdates") or []:
+        if isinstance(u, dict):
+            name = str(u.get("Display Name") or u.get("Identifier") or "")
+            ver = str(u.get("Display Version") or "")
+            pending.append((name + " " + ver).strip()[:80])
+    last = d.get("LastSuccessfulDate")
+    return {"check": flag("AutomaticCheckEnabled") is not False,
             # 「セキュリティ対応とシステムファイルをインストール」= XProtect などの守りのデータ
-            "securityData": vals["CriticalUpdateInstall"] is not False and vals["ConfigDataInstall"] is not False,
-            "oclp": is_oclp()}
+            "securityData": flag("CriticalUpdateInstall") is not False and flag("ConfigDataInstall") is not False,
+            # macOS 本体を自動で入れる設定（OCLP の Mac では、入ると起動できなくなることがある）
+            "macosAuto": flag("AutomaticallyInstallMacOSUpdates"),
+            "pending": [x for x in pending if x],
+            "lastCheck": last.isoformat(timespec="minutes") if isinstance(last, datetime.datetime) else "",
+            "oclp": is_oclp() if oclp is None else oclp}
 
 
 def mac_guard():
@@ -458,6 +488,22 @@ def time_machine():
     return {"configured": configured, "lastBackupAt": last}
 
 
+KNOWN_FILE = "known.txt"
+
+
+def known_names():
+    """本人が「自分で作った・確かめた」と書いた名前（~/.bb-preflight/known.txt、1行に1つ。# から後は無視）。
+    自動起動のラベル・AI の自動実行・外から届くアプリの名前に使う。怪しい印（偽の Apple 名など）は消さない。"""
+    data = os.environ.get("BB_PREFLIGHT_HOME") or os.path.join(HOME, ".bb-preflight")
+    try:
+        with open(os.path.join(os.path.expanduser(data), KNOWN_FILE), encoding="utf-8", errors="replace") as f:
+            lines = f.read(64 * 1024).splitlines()
+    except OSError:
+        return []
+    names = [x.split("#", 1)[0].strip()[:200] for x in lines]
+    return list(dict.fromkeys(x for x in names if x))[:200]
+
+
 def own_dirs():
     """鍵を探さない場所: このツールのフォルダと、点検結果を置くフォルダ。"""
     data = os.environ.get("BB_PREFLIGHT_HOME") or os.path.join(HOME, ".bb-preflight")
@@ -517,8 +563,16 @@ def main():
         ("timeMachine", "バックアップ", time_machine),
         ("macGuard", "Mac の守り", mac_guard),
         ("updates", "更新の設定", update_settings),
+        ("autostart", "自動で起動するもの", lambda: collect_extra.autostart(facts["agents"]["claude_launchd_jobs"])),
+        ("disguise", "名前を偽ったアプリと既知の痕跡", collect_extra.disguise),
+        ("shell", "シェルと git の常駐", collect_extra.shell_persistence),
+        ("openToRun", "開くだけで動く仕掛け", lambda: collect_extra.open_to_run(roots, SKIP_DIRS, SCAN_DEPTH)),
+        ("aiKeys", "AI ツールの鍵と版", collect_extra.ai_keys),
+        ("extensions", "ブラウザの拡張機能", collect_extra.browser_extensions),
     ]
-    facts = {"measuredAt": datetime.datetime.now().isoformat(timespec="seconds")}
+    facts = {"measuredAt": datetime.datetime.now().isoformat(timespec="seconds"),
+             "iocUpdated": collect_extra.load_ioc().get("updated", ""),
+             "known": known_names()}
     started = time.time()
     for i, (key, label, fn) in enumerate(steps, 1):
         # 進み具合は stderr に出す（stdout の最後の1行は run.sh の結果表示に使う）

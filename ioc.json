@@ -1,0 +1,53 @@
+{
+ "about": "BB Preflight が照らし合わせる、既知の痕跡の一覧。Preflight はネットにつながずに動くので、この一覧は版を出すときに更新する。原文で確かめたものだけを載せる。脆弱性の版は GitHub の advisory（一次の情報源）で確かめた。痕跡は、各社の調査報告（Microsoft・Jamf・Huntress・Kaspersky・StepSecurity・G DATA）の原文による。",
+ "updated": "2026-10-21",
+ "files": [
+  {"path": "~/.cache/.sys_auth", "source": "jamf-2026-07-13"},
+  {"path": "~/.cache/com.apple.crashreporter/.zx_*.zip", "source": "jamf-2026-07-13"},
+  {"path": "~/Library/Caches/com.apple.crashreporter/CrashReporter.app", "source": "jamf-2026-07-13"},
+  {"path": "~/Library/Application Support/com.apple.finder.core", "source": "jamf-2026-07-02"},
+  {"path": "/private/tmp/System Settings", "source": "jamf-2026-07-02"},
+  {"path": "~/Library/Caches/com.apple.trustd/com.apple.verified", "source": "huntress-2026-08-06"},
+  {"path": "~/Library/Caches/com.apple.softwareupdate/SoftwareUpdate", "source": "huntress-2026-08-06"},
+  {"path": "~/Library/Logs/.sysnotif-agent.log", "source": "kaspersky-2026-09-24"},
+  {"path": "~/Library/Application Support/System", "source": "kaspersky-2026-09-24"},
+  {"path": "/private/tmp/osalogging.zip", "source": "kaspersky-2026-09-24"},
+  {"path": "~/.mainhelper", "source": "microsoft-2026-05-06"},
+  {"path": "~/.agent", "source": "microsoft-2026-05-06"},
+  {"path": "/private/tmp/shub_*", "source": "microsoft-2026-05-06"},
+  {"path": "~/.local/bin/gh-token-monitor.sh", "source": "stepsecurity-2026-05-11"},
+  {"path": "~/.config/gh-token-monitor", "source": "stepsecurity-2026-05-11"}
+ ],
+ "launchLabels": [
+  {"label": "com.apple.crashreporter.helper", "source": "jamf-2026-07-13"},
+  {"label": "com.apple.softwareupdated", "where": "user", "source": "huntress-2026-08-06"},
+  {"label": "com.apple.finder.agent", "source": "kaspersky-2026-09-24"},
+  {"label": "com.user.gh-token-monitor", "source": "stepsecurity-2026-05-11"}
+ ],
+ "repoFiles": [
+  {"path": ".claude/setup.mjs", "source": "stepsecurity-2026-05-11"},
+  {"path": ".claude/router_runtime.js", "source": "stepsecurity-2026-05-11"},
+  {"path": ".vscode/setup.mjs", "source": "stepsecurity-2026-05-11"}
+ ],
+ "browserExtensions": [
+  {"id": "fnmihdojmnkclgjpcoonokmkhjpjechg", "source": "gdata-2026-06-03"}
+ ],
+ "aiCli": [
+  {"tool": "claude", "name": "Claude Code", "fixed": "2.1.84", "cve": "CVE-2026-40068"},
+  {"tool": "cursor", "name": "Cursor", "fixed": "2.5", "cve": "CVE-2026-26268"},
+  {"tool": "gemini", "name": "Gemini CLI", "fixed": "0.39.1", "cve": "CVE-2026-12537"}
+ ],
+ "sources": {
+  "microsoft-2026-05-06": "https://www.microsoft.com/en-us/security/blog/2026/05/06/clickfix-campaign-uses-fake-macos-utilities-lures-deliver-infostealers/",
+  "jamf-2026-07-02": "https://www.jamf.com/blog/pamstealer-macos-infostealer-applescript-rust/",
+  "jamf-2026-07-13": "https://jamf.com/blog/crashstealer-macos-infostealer-analysis/",
+  "huntress-2026-08-06": "https://www.huntress.com/blog/mac-crypto-draining-malware",
+  "kaspersky-2026-09-24": "https://securelist.com/macsync-new-version/121383/",
+  "stepsecurity-2026-05-11": "https://www.stepsecurity.io/blog/mini-shai-hulud-is-back-a-self-spreading-supply-chain-attack-hits-the-npm-ecosystem",
+  "gdata-2026-06-03": "https://blog.gdatasoftware.com/2026/06/38428-browser-addons-spy-on-ai-chats",
+  "CVE-2026-40068": "https://github.com/advisories/GHSA-q5hj-mxqh-vv77",
+  "CVE-2026-26268": "https://github.com/cursor/cursor/security/advisories/GHSA-8pcm-8jpx-hv8r",
+  "CVE-2026-12537": "https://github.com/advisories/GHSA-wpqr-6v78-jr5g",
+  "npm-12": "https://github.blog/changelog/2026-06-09-upcoming-breaking-changes-for-npm-v12/"
+ }
+}

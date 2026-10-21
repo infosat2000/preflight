@@ -60,9 +60,17 @@ CHECKS = [
     ("ssh", t("SSH の鍵", "SSH keys")),
     ("remote", t("遠隔操作アプリ", "Remote-control apps")),
     ("backup", t("バックアップ", "Backup")),
+    ("autostart", t("自動で起動するもの", "Things that start on their own")),
+    ("disguise", t("名前を偽ったアプリ", "Apps posing as Apple or Google")),
+    ("shell", t("シェルと git への居座り", "Shell and git hooks")),
+    ("repo", t("開くだけで動く仕掛け", "Code that runs when a folder opens")),
+    ("aikeys", t("AI ツールの鍵と版", "AI tool keys and versions")),
+    ("ext", t("ブラウザの拡張機能", "Browser extensions")),
 ]
 # 実測できなかった（その Mac で読めなかった・対象がない）ときは、チェックリストに出さない項目
-OPTIONAL = {"npm", "aiperm", "guard", "update", "disk", "ssh", "backup"}
+OPTIONAL = {"npm", "aiperm", "guard", "update", "disk", "ssh", "backup", "autostart", "disguise", "shell", "repo", "aikeys", "ext"}
+# 1.2.0 で足した項目。どれも「このMacの中」に置くもの
+THREAT_CATS = ("autostart", "disguise", "shell", "repo", "aikeys", "ext")
 
 _SHARING_JA = "システム設定 → 一般 → 共有 → "
 _SHARING_EN = "System Settings → General → Sharing → "
@@ -174,6 +182,23 @@ STILL_LISTED = t("この方法では待ち受けそのものは残るので、�
                  "This leaves the app itself listening, so it will still appear under \"Check\" next time. Once it's blocked, that's fine")
 
 
+# 自分で作ったものを、次から外すための書き方（名前は ~/.bb-preflight/known.txt に1行ずつ）
+KNOWN_HINT = t("自分で作ったものなら、~/.bb-preflight/known.txt に上の名前を1行ずつ書くと、次の点検から「確認済み」として外れます",
+               "If you made it yourself, write the names above in ~/.bb-preflight/known.txt, one per line, and the next check lists them as confirmed")
+
+
+def known_split(facts, names):
+    """known.txt に書かれた名前と、それ以外に分ける。"""
+    known = set(facts.get("known") or []) - {UNKNOWN_APP}
+    return [n for n in names if n not in known], [n for n in names if n in known]
+
+
+def known_good(good, cat, names):
+    if names:
+        good(cat, cat_text(t("自分で確かめたもの（known.txt）として外しました: ", "Left out because you marked them as yours (known.txt): "),
+                           join([same(n) for n in names])))
+
+
 def finding(cat, level, title, what, why, how, effort=HELP, steps=None, time=None, undo=None, keep=None, ask_ai=None):
     """1件の指摘。how は直し方の要約、steps は番号付きの手順、time は目安の時間、undo は元に戻す方法、
     keep は「このままでよい場合」、ask_ai は Claude Code などに貼る依頼文（鍵の値やファイルの中身は入れない）。"""
@@ -276,7 +301,10 @@ def analyze(facts):
             normal.append(t("%s（%s）" % (app, NORMAL_APPS[app]["ja"]),
                             "%s (%s)" % (app, NORMAL_APPS[app]["en"])))
         else:
-            unknown.append(app_name(app))
+            unknown.append(app)
+    unknown, mine = known_split(facts, unknown)
+    known_good(good, "apps", mine)
+    unknown = [app_name(a) for a in unknown]
     if unknown:
         extra = t("", "")
         if nameless:
@@ -313,8 +341,8 @@ def analyze(facts):
             time=t("約5分", "About 5 min"),
             undo=t("同じ画面でアプリを選び「外部からの接続を許可」に戻します。ゴミ箱に入れたアプリは、ゴミ箱から戻せます",
                    "In the same window, set the app back to \"Allow incoming connections\". Apps in the Trash can be put back"),
-            keep=t("スマホ連携など、ほかの機器から使う機能が必要なアプリは、そのままで大丈夫です",
-                   "Apps whose features you use from other devices, like linking to your phone, are fine as they are"),
+            keep=cat_text(t("スマホ連携など、ほかの機器から使う機能が必要なアプリは、そのままで大丈夫です。",
+                            "Apps whose features you use from other devices, like linking to your phone, are fine as they are. "), KNOWN_HINT),
             ask_ai=t("このMacで、次のアプリが同じネットワークの他の機器から接続を受け付けています: %s。"
                      "それぞれ何のために待ち受けているか調べてください。自分で作ったサーバーなら、待ち受け先を 127.0.0.1 に変えて動作確認してください。"
                      "市販のアプリなら設定は変えずに、私が何をすればよいかだけ教えてください。" % join(unknown)["ja"],
@@ -442,7 +470,8 @@ def analyze(facts):
         good("keys", t("API キーなどの鍵が、調べた範囲のファイルにそのまま書かれてはいませんでした。",
                        "No API keys or other secrets were found written in plain text in the files we checked."))
 
-    jobs = facts.get("agents", {}).get("claude_launchd_jobs", [])
+    jobs, mine = known_split(facts, facts.get("agents", {}).get("claude_launchd_jobs", []))
+    known_good(good, "ai", mine)
     if jobs:
         todo.append(finding(
             "ai", YELLOW,
@@ -468,21 +497,22 @@ def analyze(facts):
                      "Once it's off, that's fine")],
             time=t("約5分", "About 5 min"),
             undo=t("同じスイッチをオンにすれば元に戻ります", "Turn the same switch back on to undo it"),
-            keep=t("自分で作った仕組みなら、そのままで大丈夫です", "If you set them up yourself, they are fine as they are"),
+            keep=cat_text(t("自分で作った仕組みなら、そのままで大丈夫です。", "If you set them up yourself, they are fine as they are. "), KNOWN_HINT),
             ask_ai=t("このMacの ~/Library/LaunchAgents に、Claude を自動で呼び出す仕組みが登録されています: %s。"
                      "それぞれ、いつ・何を読んで・どこへ送っているかを調べて、ふつうの言葉で説明してください。止めるかどうかは私が決めるので、まだ何も変えないでください。"
                      % join([same(j) for j in jobs])["ja"],
                      "On this Mac, ~/Library/LaunchAgents has jobs that start Claude automatically: %s. "
                      "For each one, find out when it runs, what it reads and where it sends things, and explain it in plain words. "
                      "I will decide whether to stop them, so don't change anything yet." % join([same(j) for j in jobs])["en"])))
-    else:
+    elif not mine:
         good("ai", t("AI を自動で呼び出す仕組みは、見つかりませんでした。",
                      "Nothing was found that starts AI on its own."))
 
     npm_findings(facts.get("npm"), todo, good)
     more_findings(facts, todo, good)
     guard_findings(facts, todo, good)
-    update_findings(facts.get("updates"), todo, good)
+    update_findings(facts.get("updates"), todo, good, facts.get("measuredAt", ""))
+    threat_findings(facts, todo, good)
 
     order = {RED: 0, YELLOW: 1}
     todo.sort(key=lambda f: order[f["level"]])
@@ -509,7 +539,7 @@ def entry_map(facts, todo):
     elif "secrets" in facts:
         mac.append(item("keys", t("鍵の置き忘れなし", "No stray keys"), GREEN))
     skip = present(facts)
-    for cat, label in ((c, l) for c, l in CHECKS if c in ("npm", "aiperm", "guard", "update", "disk", "ssh", "backup")):
+    for cat, label in ((c, l) for c, l in CHECKS if c in ("npm", "aiperm", "guard", "update", "disk", "ssh", "backup") + THREAT_CATS):
         if cat not in skip:
             mac.append(item(cat, label, lvl.get(cat, GREEN)))
     if facts.get("remoteApps"):
@@ -523,13 +553,12 @@ def entry_map(facts, todo):
     for app, ps in sorted(wide_listeners(facts).items()):
         if ps <= set(PORTS) or app.startswith("（root"):
             continue
-        if app in NORMAL_APPS:
+        if app in NORMAL_APPS or app in set(facts.get("known") or []):
             normal += 1
         else:
             lan.append(item("apps", app_name(app), YELLOW))
     if normal:
-        lan.append(item("apps", t("Apple の標準機能 %d 件" % normal, "%d built-in Apple feature%s" % (
-            normal, "" if normal == 1 else "s")), GREEN))
+        lan.append(item("apps", t("Apple の標準機能・確認済み %d 件" % normal, "%d built-in or confirmed" % normal), GREEN))
 
     for u in facts.get("urls", []):
         uid, url, v = u.get("id", ""), u.get("url", ""), u.get("verdict")
@@ -603,6 +632,11 @@ def npm_findings(n, todo, good):
                       "npm infection monitoring (supply-chain-guard) is running, and its last scan (%s) found nothing." % (
             g.get("lastScanAt", "").replace("T", " "))))
         return
+    if n.get("scriptsOffByDefault") and not n.get("ignoreScripts"):
+        good("npm", t("npm は %s です。12 からは、パッケージを入れるときにその中のプログラムが標準で動きません（感染の主な入口が閉じています）。" % n.get("version"),
+                      "npm is %s. From version 12, programs inside packages don't run by default when installing them "
+                      "(the main way infections get in is closed)." % n.get("version")))
+        return
     if n.get("ignoreScripts"):
         good("npm", t("npm は、パッケージを入れるときにその中のプログラムを自動で動かさない設定です（感染の主な入口が閉じています）。",
                       "npm is set not to run programs inside packages when installing them (the main way infections get in is closed)."))
@@ -615,8 +649,8 @@ def npm_findings(n, todo, good):
           "AI に開発を任せていると、知らないうちにパッケージが入ることもあります。",
           "Installing just one hijacked package can let someone steal keys on this Mac (GitHub, npm, cloud and so on). "
           "When an AI does your coding, packages can be installed without you noticing."),
-        t("ターミナルで npm config set ignore-scripts true を実行します。",
-          "Run npm config set ignore-scripts true in Terminal."),
+        t("ターミナルで npm config set ignore-scripts true を実行します（npm を 12 以上にしても、同じように標準で止まります）。",
+          "Run npm config set ignore-scripts true in Terminal (updating npm to version 12 or later also turns this off by default)."),
         SELF, [t("「アプリケーション」→「ユーティリティ」から「ターミナル」を開きます",
                  "Open Terminal from Applications → Utilities"),
                t("npm config set ignore-scripts true と入力して return を押します",
@@ -660,6 +694,7 @@ def more_findings(facts, todo, good):
                          "specific commands I actually use. Show me the proposed changes before editing any settings file." % where["en"])))
         wide = ap.get("mcpWide", [])
         if code or wide:
+            code = list({b["rule"]: b for b in code}.values())   # 同じ許可が複数の設定ファイルにあっても1回だけ出す
             rules = [same(b["rule"]) for b in code[:5]]
             parts = []
             if rules:
@@ -899,15 +934,94 @@ def guard_findings(facts, todo, good):
         good("guard", cat_text(join(ok), t("でした。", ".")))
 
 
-def update_findings(u, todo, good):
-    """守りのデータ（XProtect など）を自動で受け取る設定か。macOS 本体のアップデートは勧めない。
-    OCLP の Mac は、更新を意図して止めていることが多いので、注意にせず状態だけを伝える。"""
+STALE_DAYS = 30   # これより長く更新の確認が止まっていたら知らせる（OCLP 以外の Mac だけ）
+
+# OCLP の Mac にだけ出す警告。新しくするかどうかは本人が決める。こちらからは勧めない
+OCLP_WARN = t("この Mac は OCLP（OpenCore Legacy Patcher）で動いています。macOS を新しい版にすると、再起動できなくなることがあります。"
+              "新しい版を入れる前に、OCLP がその版に対応しているかを確かめ、バックアップを取ってください。",
+              "This Mac runs with OCLP (OpenCore Legacy Patcher). Moving to a newer macOS version may leave it unable to restart. "
+              "Before installing a newer version, check that OCLP supports it, and make a backup.")
+
+
+def check_age(u, measured_at):
+    """最後に更新を確認してから何日たったか。分からなければ None。"""
+    last = (u or {}).get("lastCheck")
+    if not last or not measured_at:
+        return None
+    try:
+        import datetime
+        return (datetime.datetime.fromisoformat(measured_at[:16]) - datetime.datetime.fromisoformat(last[:16])).days
+    except ValueError:
+        return None
+
+
+def update_findings(u, todo, good, measured_at=""):
+    """更新の設定と、届いたまま入っていない更新。
+    OCLP 以外の Mac: 更新がたまっている・確認が止まっているなら知らせる。
+    OCLP の Mac: 更新は勧めず、「新しい版にすると再起動できなくなることがある」と警告する。
+    macOS 本体を自動で入れる設定がオンのときだけ、オフにする手順を出す。"""
     if not u:
         return
+    oclp = u.get("oclp")
+    pending = u.get("pending") or []
+    if oclp:
+        if u.get("macosAuto") is True:
+            todo.append(finding(
+                "update", YELLOW, t("macOS の新しい版が、自動で入る設定です", "New macOS versions install automatically"),
+                t("自動アップデートの「macOS アップデートをインストール」がオンです。", "Install macOS updates is on under Automatic Updates."),
+                OCLP_WARN,
+                t("自動で入らないように、「macOS アップデートをインストール」だけをオフにします。守りのデータの設定はそのままにします。",
+                  "Turn off only Install macOS updates so nothing installs on its own. Leave the protection-data setting as it is."),
+                SELF, [OPEN_SETTINGS,
+                       t("左の一覧で「一般」を選び、「ソフトウェアアップデート」を開きます", "Choose General on the left, then Software Update"),
+                       t("「自動アップデート」の右の「i」を押し、「macOS アップデートをインストール」をオフにして「完了」を押します",
+                         "Click the (i) next to Automatic Updates, turn off Install macOS updates, and click Done"),
+                       RECHECK],
+                time=t("約1分", "About 1 min"),
+                undo=t("同じ画面で、いつでもオンに戻せます", "You can turn it back on from the same screen"),
+                keep=t("OCLP が新しい版に対応していることを確かめてから入れる、と決めているなら、オフのままにしておきます",
+                       "If you only install new versions after checking OCLP supports them, keep it off")))
+        else:
+            good("update", OCLP_WARN)
+        if pending:
+            good("update", t("届いている更新: %s。OCLP の Mac なので、こちらからは入れることを勧めません。" % join([same(x) for x in pending])["ja"],
+                             "Updates waiting: %s. On an OCLP Mac we don't suggest installing them." % join([same(x) for x in pending])["en"]))
+    else:
+        days = check_age(u, measured_at)
+        stalled = []
+        if pending:
+            stalled.append(t("入っていない更新があります: %s" % join([same(x) for x in pending])["ja"],
+                             "Some updates aren't installed yet: %s" % join([same(x) for x in pending])["en"]))
+        if u.get("check") is False:
+            stalled.append(t("更新を自動で確認する設定がオフです", "Checking for updates automatically is off"))
+        elif days is not None and days > STALE_DAYS:
+            stalled.append(t("最後に更新を確認したのは %d 日前です" % days, "The last check for updates was %d days ago" % days))
+        if stalled:
+            todo.append(finding(
+                "update", YELLOW, t("Apple の更新が止まっています", "Apple updates have stalled"),
+                t("。".join(x["ja"] for x in stalled) + "。", ". ".join(x["en"] for x in stalled) + "."),
+                t("Apple の更新には、見つかった弱点の直しが入っています。止まったままだと、知られた弱点が残ります。",
+                  "Apple's updates include fixes for known weaknesses. While they are stalled, those weaknesses stay open."),
+                t("バックアップを取ってから、システム設定 → 一般 → ソフトウェアアップデート で入れます。",
+                  "Make a backup first, then install them from System Settings → General → Software Update."),
+                SELF, [t("Time Machine などで、バックアップを取っておきます", "Make a backup first, for example with Time Machine"),
+                       OPEN_SETTINGS,
+                       t("左の一覧で「一般」を選び、「ソフトウェアアップデート」を開きます", "Choose General on the left, then Software Update"),
+                       t("表示された更新を入れます。再起動が必要なときは、作業を保存してから進めます",
+                         "Install the updates shown. If a restart is needed, save your work first"),
+                       t("「自動アップデート」の右の「i」で、「新しいアップデートがあるか確認」をオンにしておきます",
+                         "Under the (i) next to Automatic Updates, keep Check for updates turned on"),
+                       RECHECK],
+                time=t("10分〜1時間（更新の大きさによる）", "10 min to 1 hour, depending on the update"),
+                keep=t("仕事の道具が新しい版にまだ対応していないなら、対応を確かめてから入れます",
+                       "If a tool you rely on doesn't support the new version yet, check that first")))
+        elif days is not None:
+            good("update", t("入っていない Apple の更新は、見つかりませんでした（最後の確認は %d 日前）。" % days,
+                             "No Apple updates are waiting (last checked %d days ago)." % days))
     if u.get("securityData"):
         good("update", t("ウイルス対策のデータ（XProtect など）は、自動で受け取る設定です。",
                          "Malware-protection data (such as XProtect) is set to install automatically."))
-    elif u.get("oclp"):
+    elif oclp:
         good("update", t("ウイルス対策のデータを自動で受け取る設定はオフです。OCLP の Mac では、更新を意図して止めていることがあります。"
                          "意図したものなら、そのままで構いません。",
                          "Automatic install of malware-protection data is off. OCLP Macs often turn updates off on purpose. "
@@ -929,6 +1043,445 @@ def update_findings(u, todo, good):
             undo=t("同じ画面で、いつでもオフに戻せます", "You can turn it off again on the same screen"),
             keep=t("macOS 本体のアップデートとは別の設定です。これをオンにしても、macOS の版は変わりません",
                    "This is separate from macOS upgrades. Turning it on doesn't change your macOS version")))
+
+
+# --- 1.2.0: 居座り・偽装・開くだけで動く仕掛け・AI ツールの鍵と版・拡張機能 -------------------
+
+# この印が1つでもあれば「今すぐ直す」。Apple や Google の本物の署名なら、そもそも印は付かない
+AUTOSTART_RED = {"fakeApple", "fakeGoogle", "temp", "ioc", "invalidSig", "hiddenHomeFile", "downloadRun"}
+
+FLAG_TEXT = {
+    "fakeApple": t("Apple を名乗っているが、Apple の署名ではない", "uses an Apple name but isn't signed by Apple"),
+    "fakeGoogle": t("Google を名乗っているが、Google の署名ではない", "uses a Google name but isn't signed by Google"),
+    "temp": t("一時置き場やキャッシュから動く", "runs from a temporary or cache folder"),
+    "ioc": t("マルウェアの報告にある名前", "has a name from a malware report"),
+    "invalidSig": t("署名が壊れている（中身が書き換えられた）", "its signature is broken (the contents were changed)"),
+    "hiddenHomeFile": t("ホームフォルダの隠しファイルから動く", "runs from a hidden file in your home folder"),
+    "downloadRun": t("ネットから取ってきたものを、その場で実行する", "downloads something and runs it straight away"),
+    "unsigned": t("署名がない（作り手が分からない）", "has no signature (the maker is unknown)"),
+    "adhoc": t("仮の署名だけ（作り手が分からない）", "has only a makeshift signature (the maker is unknown)"),
+    "hiddenDir": t("見慣れない隠しフォルダから動く", "runs from an unfamiliar hidden folder"),
+    "shared": t("誰でも書ける共有フォルダ（/Users/Shared）から動く", "runs from the shared folder anyone can write to (/Users/Shared)"),
+}
+
+LINE_TEXT = {
+    "downloadRun": t("ネットから取ってきて実行", "downloads and runs code"),
+    "decodeRun": t("隠した文字列を戻して実行", "decodes hidden text and runs it"),
+    "tempRun": t("一時置き場のものを実行", "runs something from a temporary folder"),
+    "hiddenRun": t("見慣れない隠しファイルを実行", "runs an unfamiliar hidden file"),
+    "osascript": t("AppleScript を実行", "runs AppleScript"),
+    "background": t("裏で動き続けるものを起動", "starts something that keeps running in the background"),
+}
+LINE_RED = {"downloadRun", "decodeRun", "tempRun"}
+
+MALWARE_STEPS = [
+    t("Mac のパスワードや、ウォレットの復元フレーズを求める画面が出ても、入れないでください",
+      "If a window asks for your Mac password or a wallet recovery phrase, don't enter it"),
+    t("Wi-Fi を切るか LAN ケーブルを抜いて、ネットから外します（Mac の電源は切らずに、そのままにします）",
+      "Turn off Wi-Fi or unplug the network cable (leave the Mac switched on)"),
+    t("ファイルはまだ消さずに、下の「AI に頼む」か、詳しい人に見てもらいます。IPA の「情報セキュリティ安心相談窓口」にも相談できます",
+      "Don't delete anything yet. Use \"Ask an AI\" below or ask an expert to look. In Japan you can also contact IPA's security consultation desk"),
+    t("本物のマルウェアだと分かったら、ほかの機器から、メール・銀行・GitHub・クラウドなどのパスワードを変えます",
+      "If it turns out to be malware, change the passwords for your email, bank, GitHub, cloud and so on from another device"),
+]
+NOT_AV = t("BB Preflight はウイルス対策ソフトの代わりではありません。見つかった痕跡を知らせるだけです",
+           "BB Preflight is not antivirus software. It only reports the traces it finds")
+
+
+def flags_text(flags):
+    return join([FLAG_TEXT[f] for f in flags if f in FLAG_TEXT])
+
+
+def listing(rows, limit=8):
+    """「名前（理由）」を並べる。多いときは残りの件数だけを書く。"""
+    shown = rows[:limit]
+    text = join([cat_text(same(name), t("（", " ("), why, t("）", ")")) for name, why in shown])
+    if len(rows) > limit:
+        text = cat_text(text, t("、ほか %d 件" % (len(rows) - limit), ", and %d more" % (len(rows) - limit)))
+    return text
+
+
+def autostart_levels(items):
+    red, yellow = [], []
+    for it in items:
+        fl = set(it.get("flags") or [])
+        if fl & AUTOSTART_RED:
+            red.append(it)
+        elif fl & {"claudeJob", "disabled", "pkg", "oclp"}:
+            continue  # claude を呼ぶジョブは「AI の自動実行」で扱う。OCLP 自身のものは OCLP の Mac に必要
+        elif fl & {"unsigned", "adhoc", "hiddenDir", "shared"}:
+            yellow.append(it)
+    return red, yellow
+
+
+def threat_findings(facts, todo, good):
+    autostart_findings(facts.get("autostart"), todo, good, facts.get("known"))
+    disguise_findings(facts.get("disguise"), facts.get("iocUpdated", ""), todo, good)
+    shell_findings(facts.get("shell"), todo, good)
+    repo_findings(facts.get("openToRun"), todo, good)
+    aikeys_findings(facts.get("aiKeys"), todo, good)
+    ext_findings(facts.get("extensions"), todo, good)
+
+
+def autostart_findings(a, todo, good, known=None):
+    if a is None:
+        return
+    red, yellow = autostart_levels(a.get("items") or [])
+    # known.txt で外せるのは黄色だけ。偽の名前や一時置き場など、赤の印は本人が書いても外さない
+    known = set(known or [])
+    mine = [it for it in yellow if it.get("label") in known]
+    yellow = [it for it in yellow if it.get("label") not in known]
+    known_good(good, "autostart", [it["label"] for it in mine])
+    if red:
+        rows = [(it["label"], flags_text(sorted(set(it["flags"]) & AUTOSTART_RED))) for it in red]
+        files = join([same(it["file"]) for it in red])
+        todo.append(finding(
+            "autostart", RED, t("自動で起動する、怪しいものがあります", "Something suspicious starts on its own"),
+            cat_text(t("Mac の起動やログインのたびに動くように登録されています: ", "These are set to run every time the Mac starts or you log in: "),
+                     listing(rows), t("。登録の場所: ", ". Where they are registered: "), files),
+            t("マルウェアは、Apple や Google の名前を借りてここに居座り、パスワードや鍵、ウォレットを盗み続けます。",
+              "Malware often hides here under an Apple or Google name, and keeps stealing passwords, keys and wallets."),
+            t("まだ消さずに、ネットから外して、詳しい人か AI に見てもらいます。", "Don't delete anything yet. Go offline and have an expert or an AI look at it."),
+            HELP, MALWARE_STEPS + [NOT_AV], time=t("30分〜", "30 min or more"),
+            ask_ai=t("BB Preflight が、このMacで自動で起動する怪しいものを見つけました: %s。登録の場所: %s。"
+                     "それぞれの plist と、それが動かすファイルの署名（codesign -dv）と中身を調べ、マルウェアかどうかを判断してください。"
+                     "ファイルの削除や launchctl での停止など、元に戻せない操作は、私に確かめてから行ってください。鍵やパスワードの値は画面に出さないでください。"
+                     % (", ".join(it["label"] for it in red), files["ja"]),
+                     "BB Preflight found suspicious items that start on their own on this Mac: %s. Registered in: %s. "
+                     "Check each plist and the signature (codesign -dv) and contents of the file it runs, and tell me whether it is malware. "
+                     "Ask me before anything that can't be undone, such as deleting files or stopping it with launchctl. Don't show any key or password values."
+                     % (", ".join(it["label"] for it in red), files["en"]))))
+    if yellow:
+        rows = [(it["label"], flags_text(sorted(set(it["flags"]) & {"unsigned", "adhoc", "hiddenDir", "shared"}))) for it in yellow]
+        todo.append(finding(
+            "autostart", YELLOW, t("作り手を確かめられない自動起動が %d 個あります" % len(yellow),
+                                   "%d item%s start%s on their own without a known maker" % (
+                                       len(yellow), "" if len(yellow) == 1 else "s", "s" if len(yellow) == 1 else "")),
+            cat_text(t("次のものが自動で動くように登録されていますが、署名から作り手が分かりません: ",
+                       "These are set to run on their own, but their signature doesn't show who made them: "), listing(rows)),
+            t("自分で作った仕組みや、開発の道具なら問題ありません。覚えのないものは、知らないうちに入り込んだプログラムかもしれません。",
+              "If you set it up yourself, or it comes from a developer tool, that's fine. If you don't recognise it, it may be a program that got in without you knowing."),
+            t("覚えのないものは、システム設定 → 一般 → ログイン項目と機能拡張 で、バックグラウンドでの実行を止めます。",
+              "For any you don't recognise, stop it from running in the background in System Settings → General → Login Items & Extensions."),
+            SELF, [OPEN_SETTINGS,
+                   t("左の一覧で「一般」を選び、右の「ログイン項目と機能拡張」を押します",
+                     "Choose General in the list on the left, then click Login Items & Extensions"),
+                   t("「バックグラウンドでの実行を許可」の一覧から、上の名前に近い項目を探し、覚えのないもののスイッチをオフにします",
+                     "In the \"Allow in the Background\" list, find the items that match the names above and turn off any you don't recognise"),
+                   t("止めても設定ファイルは残るので、次の点検でも出ます。止めてあれば、それで大丈夫です",
+                     "The setting file stays after you turn it off, so it will still appear next time. Once it's off, that's fine")],
+            time=t("約5分", "About 5 min"),
+            undo=t("同じスイッチをオンにすれば元に戻ります", "Turn the same switch back on to undo it"),
+            keep=cat_text(t("自分で作ったものや、Homebrew などの開発の道具が入れたものなら、そのままで大丈夫です。",
+                            "If you made it yourself, or a developer tool such as Homebrew added it, it's fine as it is. "), KNOWN_HINT)))
+    if not red and not yellow:
+        good("autostart", t("自動で起動するもの（%d 件）に、名前を偽ったものや、一時置き場から動くものはありませんでした。" % a.get("total", 0),
+                            "None of the %d things that start on their own use a fake name or run from a temporary folder." % a.get("total", 0)))
+
+
+def disguise_findings(d, updated, todo, good):
+    if d is None:
+        return
+    fakes = [x for x in (d.get("fakes") or []) + (d.get("running") or []) if x.get("claim")]
+    traces = [x["file"] for x in d.get("ioc") or []] + [x["file"] for x in d.get("fakes") or [] if not x.get("claim")]
+    running = [x for x in d.get("running") or [] if not x.get("claim")]
+    wallets = [x for x in d.get("wallets") or [] if x.get("tampered")]
+    updated = d.get("iocUpdated") or updated
+    if fakes:
+        rows = [(x["file"], FLAG_TEXT["fake" + x["claim"].capitalize()]) for x in fakes]
+        files = ", ".join(x["file"] for x in fakes)
+        todo.append(finding(
+            "disguise", RED, t("Apple や Google を名乗る偽のアプリがあります", "An app is posing as Apple or Google"),
+            cat_text(t("Apple や Google の名前なのに、本物の署名がないものが見つかりました: ",
+                       "These use an Apple or Google name, but don't carry that company's real signature: "), listing(rows)),
+            t("2026 年に報告された Mac の情報窃取型マルウェアのほとんどが、こうした偽の名前で隠れています。パスワード・ブラウザのログイン・暗号資産が盗まれます。",
+              "Most Mac info-stealers reported in 2026 hide behind fake names like these. They steal passwords, browser logins and crypto wallets."),
+            t("まだ消さずに、ネットから外して、詳しい人か AI に見てもらいます。", "Don't delete anything yet. Go offline and have an expert or an AI look at it."),
+            HELP, MALWARE_STEPS + [NOT_AV], time=t("30分〜", "30 min or more"),
+            ask_ai=t("BB Preflight が、Apple や Google を名乗っているのに本物の署名がないファイルを見つけました: %s。"
+                     "それぞれ codesign -dv と spctl -a -vv で署名を確かめ、どこから来たか（xattr -l の com.apple.quarantine など）と、"
+                     "自動で起動する登録（~/Library/LaunchAgents など）がないかを調べ、マルウェアかどうか判断してください。"
+                     "削除など元に戻せない操作は、私に確かめてから行ってください。" % files,
+                     "BB Preflight found files that use an Apple or Google name without that company's real signature: %s. "
+                     "For each, check the signature with codesign -dv and spctl -a -vv, find out where it came from (for example the "
+                     "com.apple.quarantine attribute in xattr -l), look for anything that starts it automatically (such as ~/Library/LaunchAgents), "
+                     "and tell me whether it is malware. Ask me before anything that can't be undone, such as deleting files." % files)))
+    if traces:
+        names = join([same(x) for x in traces[:8]])
+        todo.append(finding(
+            "disguise", RED, t("マルウェアの報告にある痕跡が見つかりました", "Traces from malware reports were found"),
+            cat_text(t("2026 年のマルウェアの報告に出てくる名前や場所に、ファイルがあります: ",
+                       "Files exist under names or places that appear in 2026 malware reports: "), names,
+                     t("（ほか %d 件）" % (len(traces) - 8), " (and %d more)" % (len(traces) - 8)) if len(traces) > 8 else ""),
+            t("盗んだパスワードやファイルを、まとめて送る準備をしているおそれがあります。",
+              "Malware may be collecting stolen passwords and files here to send them out."),
+            t("まだ消さずに、ネットから外して、詳しい人か AI に見てもらいます。", "Don't delete anything yet. Go offline and have an expert or an AI look at it."),
+            HELP, MALWARE_STEPS + [NOT_AV], time=t("30分〜", "30 min or more"),
+            ask_ai=t("BB Preflight が、マルウェアの報告にある名前のファイルを見つけました: %s。"
+                     "中身の鍵やパスワードは画面に出さずに、いつ作られたか、何のプログラムが作ったか、自動で起動する登録がないかを調べ、"
+                     "マルウェアかどうか判断してください。削除など元に戻せない操作は、私に確かめてから行ってください。" % ", ".join(traces),
+                     "BB Preflight found files whose names appear in malware reports: %s. Without showing any keys or passwords inside them, "
+                     "find out when they were created, which program created them, and whether anything starts them automatically, "
+                     "then tell me whether this is malware. Ask me before anything that can't be undone, such as deleting files." % ", ".join(traces))))
+    if wallets:
+        apps = join([same(x["app"]) for x in wallets])
+        todo.append(finding(
+            "disguise", RED, t("ウォレットのアプリが書き換えられています", "A wallet app has been modified"),
+            cat_text(t("次の暗号資産ウォレットのアプリの署名が、作り手のものではなくなっています: ",
+                       "These crypto wallet apps no longer carry their maker's signature: "), apps),
+            t("マルウェアがウォレットのアプリを差し替え、復元フレーズや送金先を盗むことがあります。",
+              "Malware sometimes replaces wallet apps to steal recovery phrases or redirect payments."),
+            t("そのアプリは開かずに、作り手の公式サイトから入れ直します。資産は、別の安全な機器で新しいウォレットに移します。",
+              "Don't open the app. Reinstall it from the maker's official site, and move your funds to a new wallet from another safe device."),
+            HELP, MALWARE_STEPS, time=t("1時間〜", "1 hour or more")))
+    if running:
+        rows = [(x["file"], flags_text(x.get("flags") or [])) for x in running]
+        todo.append(finding(
+            "disguise", YELLOW, t("一時置き場から、署名のないプログラムが動いています", "An unsigned program is running from a temporary folder"),
+            cat_text(t("今動いているプログラムのうち、次のものは一時置き場などにあり、署名から作り手が分かりません: ",
+                       "These running programs sit in a temporary folder or similar, and their signature doesn't show who made them: "), listing(rows)),
+            t("自分で作ったプログラムを試しているところなら問題ありません。覚えのないものは、ターミナルに貼り付けたコマンドで入り込んだものかもしれません。",
+              "If you are testing a program you built, that's fine. If you don't recognise it, it may have got in through a command pasted into Terminal."),
+            t("覚えがなければ、ネットから外して、詳しい人か AI に見てもらいます。", "If you don't recognise it, go offline and have an expert or an AI look at it."),
+            HELP, time=t("15分〜", "15 min or more"),
+            keep=t("自分で作ったり試したりしているプログラムなら、そのままで大丈夫です",
+                   "If it is a program you are building or testing, it's fine")))
+    if not (fakes or traces or wallets or running):
+        good("disguise", t("Apple や Google を名乗る偽のアプリや、既知の痕跡（%s 時点の一覧）は見つかりませんでした。" % (updated or "-"),
+                           "No apps posing as Apple or Google, and no known traces (list as of %s), were found." % (updated or "-")))
+
+
+def shell_findings(s, todo, good):
+    if s is None:
+        return
+    red, yellow = [], []
+    for f in s.get("files") or []:
+        if f.get("othersCanWrite"):
+            red.append((f["file"], t("本人以外も書き換えられる", "others can change it")))
+        for h in f.get("hits") or []:
+            kinds = h.get("kinds") or []
+            row = ("%s:%d" % (f["file"], h["line"]), join([LINE_TEXT[k] for k in kinds if k in LINE_TEXT]))
+            (red if set(kinds) & LINE_RED else yellow).append(row)
+    for g in s.get("git") or []:
+        if not g.get("hooks"):
+            continue
+        row = ("%s → %s" % (g["setting"], g["dir"]), cat_text(t("すべてのリポジトリで動くフック: ", "hooks that run in every repository: "),
+                                                             same(", ".join(g["hooks"]))))
+        (red if g.get("flags") else yellow).append(row)
+    if red:
+        todo.append(finding(
+            "shell", RED, t("ターミナルやgitを使うたびに、怪しいものが動きます", "Something suspicious runs every time you use Terminal or git"),
+            cat_text(t("次の場所に、怪しい書き込みがあります（行の中身はこのレポートに書いていません）: ",
+                       "These places contain suspicious entries (the lines themselves are not shown in this report): "), listing(red)),
+            t("2026 年の MacSync や PamStealer は、~/.zshrc や git の全体フックに書き込んで、消されても戻ってくるようにしていました。",
+              "In 2026, MacSync and PamStealer wrote into ~/.zshrc and global git hooks so they came back even after being removed."),
+            t("まだ消さずに、ネットから外して、詳しい人か AI に見てもらいます。", "Don't delete anything yet. Go offline and have an expert or an AI look at it."),
+            HELP, MALWARE_STEPS + [NOT_AV], time=t("30分〜", "30 min or more"),
+            ask_ai=t("BB Preflight が、シェルの起動ファイルか git の全体フックに怪しい書き込みを見つけました: %s。"
+                     "その行やフックが何をするかを、鍵やパスワードの値を画面に出さずに説明し、マルウェアかどうか判断してください。"
+                     "書き換える前に、変更の案を見せて私に確かめてください。" % ", ".join(r[0] for r in red),
+                     "BB Preflight found suspicious entries in shell startup files or global git hooks: %s. Explain what each line or hook does "
+                     "without showing any key or password values, and tell me whether it is malware. Show me the proposed change before editing anything."
+                     % ", ".join(r[0] for r in red))))
+    if yellow:
+        todo.append(finding(
+            "shell", YELLOW, t("ターミナルやgitを使うたびに動くものがあります", "Some things run every time you use Terminal or git"),
+            cat_text(t("次の場所に、使うたびに動く書き込みがあります（行の中身はこのレポートに書いていません）: ",
+                       "These places run something every time (the lines themselves are not shown in this report): "), listing(yellow)),
+            t("自分で書いたものなら問題ありません。覚えのないものは、知らないうちに書き足されたのかもしれません。",
+              "If you wrote it yourself, that's fine. If you don't recognise it, it may have been added without you knowing."),
+            t("テキストエディットなどでそのファイルを開き、書かれた行を確かめます。覚えのない行は、先頭に # を付けて止めます。",
+              "Open the file in a text editor and look at that line. Put # at the start of any line you don't recognise to turn it off."),
+            SELF, time=t("約10分", "About 10 min"),
+            undo=t("付けた # を消せば元に戻ります", "Remove the # to undo it"),
+            keep=t("自分で書いた行や、自分で設定したフックなら、そのままで大丈夫です",
+                   "If you wrote the line or set up the hook yourself, it's fine as it is"),
+            ask_ai=t("BB Preflight が、シェルの起動ファイルか git の全体設定に、使うたびに動く書き込みを見つけました: %s。"
+                     "それぞれ何をしているか、ふつうの言葉で説明してください。鍵やパスワードの値は画面に出さず、まだ何も変えないでください。"
+                     % ", ".join(r[0] for r in yellow),
+                     "BB Preflight found entries in shell startup files or global git settings that run every time: %s. "
+                     "Explain in plain words what each one does. Don't show key or password values, and don't change anything yet."
+                     % ", ".join(r[0] for r in yellow))))
+    if not red and not yellow:
+        good("shell", t("シェルの起動ファイル（%d 個）と git の全体設定に、怪しい書き込みはありませんでした。" % len(s.get("files") or []),
+                        "No suspicious entries in your shell startup files (%d) or global git settings." % len(s.get("files") or [])))
+
+
+def repo_findings(r, todo, good):
+    if r is None:
+        return
+    red = [(x["file"], t("ワームが置くファイルの名前", "a file name used by an npm worm")) for x in r.get("ioc") or []]
+    red += [(x["file"], t("人の目に見えない指示", "instructions hidden from human eyes")) for x in r.get("hidden") or [] if "tags" in x["kinds"]]
+    yellow = [(x["file"], cat_text(t("フック: ", "hooks: "), same(", ".join(x["events"])))) for x in r.get("hooks") or []]
+    yellow += [(x["file"], t("フォルダを開くと動くタスク", "a task that runs when the folder opens")) for x in r.get("tasks") or []]
+    yellow += [(x["file"], t("見えない文字や向きを変える文字", "invisible or direction-changing characters"))
+               for x in r.get("hidden") or [] if "tags" not in x["kinds"]]
+    if red:
+        files = ", ".join(x[0] for x in red)
+        todo.append(finding(
+            "repo", RED, t("開くだけで動く、ワームの仕掛けがあります", "A worm's trap that runs when a folder opens"),
+            cat_text(t("次のファイルが見つかりました: ", "These were found: "), listing(red)),
+            t("2026 年の npm ワーム（Mini Shai-Hulud 系）は、AI エージェントやエディタでフォルダを開くだけで動き、GitHub や npm、クラウドの鍵を盗んで、ほかのリポジトリにも広がりました。npm install をしなくても動きます。",
+              "In 2026, npm worms (the Mini Shai-Hulud family) ran as soon as a folder was opened in an AI agent or editor, stole GitHub, npm and cloud keys, "
+              "and spread to other repositories. They run even without npm install."),
+            t("そのフォルダを AI エージェントやエディタで開かずに、詳しい人か AI に、ほかの場所から見てもらいます。鍵は作り直します。",
+              "Don't open that folder in an AI agent or editor. Have an expert or an AI look at it from elsewhere, and replace your keys."),
+            HELP, [t("そのフォルダを Claude Code・Cursor・VS Code などで開かないでください", "Don't open that folder in Claude Code, Cursor, VS Code or similar")]
+            + MALWARE_STEPS[1:] + [NOT_AV], time=t("1時間〜", "1 hour or more"),
+            ask_ai=t("BB Preflight が、開くだけで動くワームの仕掛けらしいファイルを見つけました: %s。そのフォルダではなく、ホームフォルダから作業してください。"
+                     "ファイルの中身を実行せずに読んで、何をするものか、git の履歴でいつ入ったかを調べてください。"
+                     "鍵の値は画面に出さず、削除や鍵の作り直しは私に確かめてから行ってください。" % files,
+                     "BB Preflight found files that look like a worm's open-to-run trap: %s. Work from my home folder, not from inside that folder. "
+                     "Read the files without running them, explain what they do, and use git history to find when they arrived. "
+                     "Don't show key values, and ask me before deleting files or replacing keys." % files)))
+    if yellow:
+        todo.append(finding(
+            "repo", YELLOW, t("フォルダを開くと自動で動く設定があります", "Some folders run things automatically when opened"),
+            cat_text(t("次のプロジェクトに、開いたときや AI の作業中に自動で動く設定があります: ",
+                       "These projects have settings that run things when opened or while an AI is working: "), listing(yellow)),
+            t("自分で入れた設定なら問題ありません。人から受け取ったリポジトリや、ダウンロードしたプロジェクトに入っていたなら、ワームの仕掛けかもしれません。",
+              "If you added them yourself, that's fine. If they came in a repository someone sent you or a project you downloaded, they may be a worm's trap."),
+            t("そのファイルを開いて、自分で入れた設定か確かめます。覚えのないものは、そのフォルダを AI エージェントやエディタで開く前に消します。",
+              "Open the file and check that you added it. If you don't recognise it, remove it before opening the folder in an AI agent or editor."),
+            SELF, time=t("約10分", "About 10 min"),
+            keep=t("自分で作ったフックやタスクなら、そのままで大丈夫です", "If you made the hooks or tasks yourself, they're fine as they are"),
+            ask_ai=t("BB Preflight が、フォルダを開くと自動で動く設定を見つけました: %s。それぞれ、何を実行するのか、"
+                     "git の履歴でいつ・誰が入れたのかを、実行せずに調べて説明してください。まだ何も変えないでください。" % ", ".join(x[0] for x in yellow),
+                     "BB Preflight found settings that run things when a folder opens: %s. Without running anything, explain what each one runs, "
+                     "and use git history to find when and by whom it was added. Don't change anything yet." % ", ".join(x[0] for x in yellow))))
+    if not red and not yellow:
+        good("repo", t("走査範囲のプロジェクトに、開くだけで動く仕掛けや、AI への見えない指示はありませんでした。",
+                       "No open-to-run traps or hidden AI instructions were found in the projects we checked."))
+
+
+CRED_NAME = {"git": "Git", "npm": "npm", "gh": "GitHub CLI", "docker": "Docker", "netrc": ".netrc", "pypi": "PyPI",
+             "aws": "AWS", "codex": "Codex", "gemini": "Gemini CLI", "copilot": "GitHub Copilot", "claude": "Claude Code"}
+PLAIN_FIX = {
+    "git": t("git config --global credential.helper osxkeychain にして、~/.git-credentials を消します",
+             "Run git config --global credential.helper osxkeychain, then delete ~/.git-credentials"),
+    "npm": t("~/.npmrc の _authToken を消し、npm login でやり直すか、${NPM_TOKEN} のように環境変数から読む形にします",
+             "Remove _authToken from ~/.npmrc and log in again with npm login, or read it from an environment variable like ${NPM_TOKEN}"),
+    "gh": t("gh auth logout のあと gh auth login でやり直すと、キーチェーンに保存されます",
+            "Run gh auth logout, then gh auth login, so the token is stored in Keychain"),
+    "docker": t("~/.docker/config.json に \"credsStore\": \"osxkeychain\" を入れて、docker login をやり直します",
+                "Add \"credsStore\": \"osxkeychain\" to ~/.docker/config.json and run docker login again"),
+    "netrc": t("~/.netrc のパスワードは、パスワード管理アプリかキーチェーンに移します", "Move the passwords in ~/.netrc to a password manager or Keychain"),
+    "pypi": t("~/.pypirc のパスワードを消し、keyring を使う形にします", "Remove the password from ~/.pypirc and use keyring instead"),
+}
+
+
+def aikeys_findings(k, todo, good):
+    if not k or not any(k.get(x) for x in ("credFiles", "mcp", "cli")):
+        return
+    creds = k.get("credFiles") or []
+    # 鍵を入れるための置き場所（plain が None）か、平文の鍵が見つかったものだけ。鍵の無い設定ファイルは読めても困らない
+    open_files = [c for c in creds if c.get("private") is False and c.get("plain") is not False]
+    plain = [c for c in creds if c.get("plain") and c.get("private") is not False and c["kind"] in PLAIN_FIX]
+    mcp = k.get("mcp") or []
+    mcp_keys = [m for m in mcp if m.get("secretValues")]
+    mcp_http = [m for m in mcp if m.get("insecureUrl")]
+    old = [c for c in k.get("cli") or [] if c.get("old")]
+    if open_files:
+        files = join([same(c["file"]) for c in open_files])
+        todo.append(finding(
+            "aikeys", RED, t("鍵のファイルが、ほかのユーザーやアプリからも読めます", "Key files can be read by other users and apps"),
+            cat_text(t("次のファイルは、AI ツールや開発の道具の鍵を入れる場所ですが、本人以外も読める設定です: ",
+                       "These files hold keys for AI or developer tools, but people other than you can read them: "), files),
+            t("npm ワームなどは、まさにこうしたファイルを読んで鍵を盗みます。",
+              "npm worms and similar malware read exactly these files to steal keys."),
+            t("ターミナルで chmod 600 ファイル名 を実行して、本人だけが読めるようにします。",
+              "Run chmod 600 <file> in Terminal so only you can read it."),
+            SELF, [t("「アプリケーション」→「ユーティリティ」から「ターミナル」を開きます", "Open Terminal from Applications → Utilities"),
+                   t("chmod 600 %s と入力して return を押します" % " ".join(c["file"] for c in open_files),
+                     "Type chmod 600 %s and press return" % " ".join(c["file"] for c in open_files)),
+                   RECHECK],
+            time=t("約1分", "About 1 min"),
+            undo=t("chmod 644 ファイル名 で元に戻ります（戻す理由はふつうありません）", "chmod 644 <file> undoes it (there is usually no reason to)")))
+    if plain or mcp_keys:
+        rows = [(c["file"], cat_text(same(CRED_NAME.get(c["kind"], c["kind"])), t(" の鍵が平文", " key in plain text"))) for c in plain]
+        rows += [("%s（%s）" % (m["name"], m["app"]), t("MCP の設定に鍵が直接", "key written straight into the MCP settings")) for m in mcp_keys]
+        steps = [PLAIN_FIX[c["kind"]] for c in plain]
+        if mcp_keys:
+            steps.append(t("MCP の設定の env に書いた鍵は、キーチェーンや環境変数から読む形にします（例: \"${GITHUB_TOKEN}\"）",
+                           "For keys in an MCP server's env settings, read them from Keychain or an environment variable instead (for example \"${GITHUB_TOKEN}\")"))
+        todo.append(finding(
+            "aikeys", YELLOW, t("AI ツールや開発の道具の鍵が、平文で置かれています", "Keys for AI and developer tools are stored in plain text"),
+            cat_text(t("次の場所に、鍵がそのまま書かれています（鍵の値はこのレポートに書いていません）: ",
+                       "Keys are written as they are in these places (the values are not shown in this report): "), listing(rows)),
+            t("2026 年の npm ワームや情報窃取型マルウェアは、こうした設定ファイルを真っ先に読みます。MCP の設定から漏れた鍵も多く報告されています。",
+              "In 2026, npm worms and info-stealers went straight for these settings files. Many keys have also leaked from MCP settings."),
+            steps[0], SELF, steps + [RECHECK], time=t("約15分", "About 15 min"),
+            keep=t("本人しか読めない設定で、AI に怪しいものを読ませないなら、すぐ危ないわけではありません",
+                   "If only you can read it and your AI never reads untrusted content, it's not an urgent danger"),
+            ask_ai=t("BB Preflight が、次の場所に平文の鍵を見つけました: %s。鍵の値は画面に出さずに、キーチェーンや環境変数から読む形に変える手順を、"
+                     "私の環境に合わせて案内してください。書き換える前に、変更の案を見せて私に確かめてください。" % ", ".join(r[0] for r in rows),
+                     "BB Preflight found plain-text keys in: %s. Without showing the key values, walk me through moving them to Keychain or environment "
+                     "variables for my setup. Show me the proposed change before editing anything." % ", ".join(r[0] for r in rows))))
+    if mcp_http:
+        names = join([same("%s（%s）" % (m["name"], m["app"])) for m in mcp_http])
+        todo.append(finding(
+            "aikeys", YELLOW, t("暗号化されていない通信の MCP があります", "An MCP server uses an unencrypted connection"),
+            cat_text(t("次の MCP サーバーは、インターネットの先に http（暗号化なし）でつながっています: ",
+                       "These MCP servers connect over the internet with plain http (no encryption): "), names),
+            t("通り道で中身やトークンを読まれたり、返事を書き換えられて AI に悪い指示を入れられたりします。",
+              "Anyone along the way can read the traffic and tokens, or change the replies to slip bad instructions to your AI."),
+            t("その MCP の URL を https に変えます。https に対応していないサーバーは使わないようにします。",
+              "Change that MCP server's URL to https. Stop using servers that don't support https."),
+            SELF, time=t("約5分", "About 5 min")))
+    if old:
+        rows = [(c["name"], t("%s（%s より前の版に既知の脆弱性 %s）" % (c["version"], c["fixed"], c["cve"]),
+                              "%s (versions before %s have known flaw %s)" % (c["version"], c["fixed"], c["cve"]))) for c in old]
+        todo.append(finding(
+            "aikeys", YELLOW, t("AI ツールに、直った版があります", "A fixed version of an AI tool is available"),
+            cat_text(t("次の AI ツールは、既知の脆弱性が直る前の版です: ", "These AI tools are older than the version that fixes a known flaw: "), listing(rows)),
+            t("悪いリポジトリや設定を開いたとき、確認なしでコマンドを動かされたり、鍵を外へ送られたりするおそれがあります。",
+              "Opening a malicious repository or settings file could make the tool run commands without asking, or send your keys out."),
+            t("その AI ツールを最新の版にします（macOS 本体のアップデートとは別です）。",
+              "Update that AI tool to the latest version (this is separate from macOS updates)."),
+            SELF, time=t("約5分", "About 5 min"),
+            keep=t("macOS の版は変わりません。AI ツールだけの更新です", "This doesn't change your macOS version. Only the AI tool is updated")))
+    if not (open_files or plain or mcp_keys or mcp_http or old):
+        unp = len([m for m in mcp if m.get("unpinned")])
+        extra = t("（版を固定せずに毎回取ってくる MCP が %d 個あります。気になるなら版を固定します）" % unp,
+                  " (%d MCP server%s fetch%s the latest version every time; pin the version if that worries you)" % (
+                      unp, "" if unp == 1 else "s", "es" if unp == 1 else "")) if unp else t("", "")
+        good("aikeys", cat_text(t("AI ツールや開発の道具の鍵の置き方、MCP の設定、AI ツールの版に、気になるものはありませんでした。",
+                                  "Nothing worrying in how AI and developer tool keys are stored, in MCP settings, or in AI tool versions."), extra))
+
+
+def ext_findings(e, todo, good):
+    if not e:
+        return
+    items = e.get("items") or []
+    bad = [x for x in items if x.get("bad")]
+    side = [x for x in items if not x.get("bad")]
+    if bad:
+        names = join([same("%s（%s）" % (x["name"], x["browser"])) for x in bad])
+        todo.append(finding(
+            "ext", RED, t("AI の会話を盗むと報告された拡張機能が入っています", "An extension reported to steal AI chats is installed"),
+            cat_text(t("次の拡張機能は、AI との会話を外へ送ると報告されたものです: ", "These extensions were reported to send your AI chats out: "), names),
+            t("ChatGPT や Claude などとの会話の中身、そこに貼った鍵や仕事の情報が、知らない人に送られます。",
+              "The contents of your chats with ChatGPT, Claude and others, including keys or work details you pasted, go to strangers."),
+            t("ブラウザの拡張機能の管理画面（chrome://extensions など）で、その拡張機能を削除します。会話に貼ったことのある鍵は作り直します。",
+              "Remove the extension in your browser's extension page (such as chrome://extensions). Replace any keys you ever pasted into a chat."),
+            SELF, time=t("約10分", "About 10 min")))
+    if side:
+        rows = [(x["name"], cat_text(same(x["browser"]), t("・ストアの外から", ", not from the store"))) for x in side]
+        todo.append(finding(
+            "ext", YELLOW, t("ストアの外から入った拡張機能があります", "Some extensions didn't come from the store"),
+            cat_text(t("次の拡張機能は、ブラウザの公式ストア以外から入っています: ", "These extensions came from somewhere other than the browser's store: "),
+                     listing(rows)),
+            t("マルウェアは、ブラウザに自分の拡張機能を入れて、ログインやウォレットを盗むことがあります。",
+              "Malware sometimes adds its own browser extension to steal logins and wallets."),
+            t("拡張機能の管理画面で、覚えのないものを削除します。", "Remove any you don't recognise in the browser's extension page."),
+            SELF, time=t("約5分", "About 5 min"),
+            keep=t("自分で作った拡張機能や、会社が入れたものなら、そのままで大丈夫です",
+                   "Extensions you built yourself, or ones your company installed, are fine")))
+    if not items:
+        good("ext", t("ブラウザ（%s）の拡張機能 %d 個は、すべて公式ストアから入ったもので、既知の悪いものはありませんでした。" % (
+            "・".join(e.get("browsers") or []), e.get("total", 0)),
+            "All %d extensions in your browser%s (%s) came from the official store, and none are known to be bad." % (
+                e.get("total", 0), "" if len(e.get("browsers") or []) == 1 else "s", ", ".join(e.get("browsers") or []))))
 
 
 # 構成図の3列: だれが → 入口（このMac・サイト・AI）→ その先（データ・外部サービス・鍵）
@@ -1033,6 +1586,12 @@ def present(facts):
         "disk": (facts.get("fileVault") or {}).get("on") is not None,
         "ssh": bool(facts.get("sshKeys")),
         "backup": bool(facts.get("timeMachine")),
+        "autostart": facts.get("autostart") is not None,
+        "disguise": facts.get("disguise") is not None,
+        "shell": facts.get("shell") is not None,
+        "repo": facts.get("openToRun") is not None,
+        "aikeys": any((facts.get("aiKeys") or {}).get(k) for k in ("credFiles", "mcp", "cli")),
+        "ext": bool(facts.get("extensions")),
     }
     skip = [c for c in OPTIONAL if not has.get(c)]
     if "remoteApps" not in facts:
@@ -1094,6 +1653,17 @@ def changes(prev, cur):
                for x in sorted(a - b)]
     worse += [t("鍵が書かれたファイルが増えました: %s" % x, "A new file with a key in it was found: %s" % x)
               for x in sorted(b - a)]
+    # 自動で起動するものは、前回も実測していたときだけ比べる（1.2.0 より前の結果と比べて全部「増えた」にしない）
+    if prev.get("autostart") is not None and cur.get("autostart") is not None:
+        a = {x["label"] for x in prev["autostart"].get("items", [])}
+        b = {x["label"] for x in cur["autostart"].get("items", [])}
+        worse += [t("自動で起動するものが増えました: %s" % x, "Something new starts on its own: %s" % x) for x in sorted(b - a)]
+        better += [t("自動で起動するものが減りました: %s" % x, "Something no longer starts on its own: %s" % x) for x in sorted(a - b)]
+    if prev.get("disguise") is not None and cur.get("disguise") is not None:
+        sus = lambda d: {x["file"] for x in (d.get("fakes") or []) + (d.get("ioc") or [])}
+        a, b = sus(prev["disguise"]), sus(cur["disguise"])
+        worse += [t("怪しいファイルが見つかりました: %s" % x, "A suspicious file was found: %s" % x) for x in sorted(b - a)]
+        better += [t("怪しいファイルがなくなりました: %s" % x, "A suspicious file is gone: %s" % x) for x in sorted(a - b)]
     return {"better": better, "worse": worse}
 
 

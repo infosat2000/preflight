@@ -17,7 +17,9 @@ FOREST LIFE* が作り、[Blackbox Blast](https://blackboxblast.com/) で紹介�
 - **差分で、直したことを数字で示せる。** 上の対処の後、「関連する脅威 24 件が解消・追加 0 件」と確認できた。
 - **AI エージェントの入口が見える。** claude を呼ぶ定期ジョブ、ローカル MCP、外部へ送信できるコネクタを図に入れる。
 - **npm の感染対策を確かめる。** npm を使っている Mac では、install スクリプトを止める設定（`ignore-scripts`）と、感染を見張る supply-chain-guard の最新の結果（`~/.claude/supply-chain/state.json`）を読む。走査そのものはしない。
-- **Mac の基本の守りを見る。** Claude Code に与えた許可の広さ（`Bash(*)` や確認を飛ばすモード、ホーム全体を渡した MCP）、FileVault、SSH 鍵のパスフレーズの有無、サポート詐欺でよく使われる遠隔操作アプリ、Time Machine の最後のバックアップ、SIP・Gatekeeper・自動ログイン、ウイルス対策のデータ（XProtect など）を自動で受け取る設定。macOS 本体のアップデートは勧めない。どれも sudo なしで読むだけ。SSH 鍵はファイルを読むが、見るのは先頭の暗号方式の名前だけで、鍵の値は記録も表示もしない。OpenCore Legacy Patcher（OCLP）で動く Mac は SIP を一部ゆるめるのが前提なので、その分は問題にしない。
+- **Mac の基本の守りを見る。** Claude Code に与えた許可の広さ（`Bash(*)` や確認を飛ばすモード、ホーム全体を渡した MCP）、FileVault、SSH 鍵のパスフレーズの有無、サポート詐欺でよく使われる遠隔操作アプリ、Time Machine の最後のバックアップ、SIP・Gatekeeper・自動ログイン、ウイルス対策のデータ（XProtect など）を自動で受け取る設定と、届いたまま入っていない Apple の更新（1.2.0）。OCLP で動く Mac には更新を勧めず、「新しい版にすると再起動できなくなることがある」と警告だけする。どれも sudo なしで読むだけ。SSH 鍵はファイルを読むが、見るのは先頭の暗号方式の名前だけで、鍵の値は記録も表示もしない。OpenCore Legacy Patcher（OCLP）で動く Mac は SIP を一部ゆるめるのが前提なので、その分は問題にしない。
+
+- **居座りと偽装を見る（1.2.0）。** 自動で起動するもの（LaunchAgents・LaunchDaemons・アプリの中のログイン項目の部品）の実行ファイルの場所と署名、Apple や Google を名乗る偽のアプリ（~/Library/Caches・Application Support・/tmp など）、~/.zshrc などシェルの起動ファイルと git の全体フック、リポジトリを開くだけで動く仕掛け（`.claude/settings.json` のフック、`.vscode/tasks.json` の folderOpen、指示ファイルの見えない文字）、AI ツールや開発の道具の鍵の置き方と MCP の設定、既知の脆弱性がある AI ツールの版、ブラウザの拡張機能。本物の Apple・Google の署名は問題にしない。照らす既知の痕跡は [ioc.json](ioc.json)（日付と出典つき。版を出すときに更新）。ログイン項目の一覧そのものは sudo なしでは読めないので、アプリの中の部品と今動いているものから確かめる。ウイルス対策ソフトの代わりではない。自分で作った自動起動などは `~/.bb-preflight/known.txt` に名前を1行ずつ書くと「確認済み」になる（赤の印は外れない）。
 
 **効かないところ**
 - レポート 3・4 節の脅威一覧は、CyberRiskScape のルールが構成要素の**種類**から一般論として出すもの。たとえば AI エージェント 1 つに High の脅威が十数件並ぶが、その Mac で確かめた問題ではない。件数は危険度を表さない。

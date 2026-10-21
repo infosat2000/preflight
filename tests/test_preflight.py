@@ -696,7 +696,7 @@ class MacChecksTest(unittest.TestCase):
         self.assertEqual(self.levels(f, "remote"), ["yellow"])
         self.assertEqual(self.levels(f, "backup"), ["red"])               # over 30 days
         self.assertEqual(sorted(self.levels(f, "guard")), ["red", "red", "yellow"])
-        self.assertEqual(self.levels(f, "update"), ["yellow"])
+        self.assertEqual(self.levels(f, "update"), ["yellow", "yellow"])
         self.assertEqual(len(d["checks"]), 13)                            # every check except npm (not used here)
         import datetime
         at = datetime.datetime.fromisoformat(f["measuredAt"][:16])

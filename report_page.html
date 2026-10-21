@@ -380,7 +380,9 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       limits: ["パスワードの強さや使い回しは調べていません。",
         "ほかの機器から本当につながるかは試していません。このMacの中から調べています。",
         "「問題なし」は安全の保証ではありません。調べた項目の範囲で問題が見つからなかった、という意味です。",
-        "このレポートは、このMacの中だけで作っています。点検結果はどこにも送っていません。"],
+        "このレポートは、このMacの中だけで作っています。点検結果はどこにも送っていません。",
+        "ウイルス対策ソフトの代わりではありません。見つかった痕跡を知らせるだけで、見つからないことは安全の証明ではありません（一時置き場は再起動で消え、マルウェアの多くはディスクに残りません）。",
+        "ログイン項目の一覧そのものは、sudo なしでは読めません。アプリの中にある自動起動の部品と、今動いているものから確かめています。"],
       theme_to_light: "ライトテーマに切り替え", theme_to_dark: "ダークテーマに切り替え",
       radar_stop: "止める", radar_go: "動かす", radar_aria: "レーダーの回転"
     },
@@ -414,7 +416,9 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       limits: ["Password strength and reuse are not checked.",
         "It does not test whether other devices can actually connect. It checks from inside this Mac.",
         "\"Fine\" is not a guarantee of safety. It means no problem was found in what was checked.",
-        "This report is made only on this Mac. Your results are not sent anywhere."],
+        "This report is made only on this Mac. Your results are not sent anywhere.",
+        "This is not antivirus software. It only reports the traces it finds, and finding nothing doesn't prove you are safe (temporary folders are cleared on restart, and much malware leaves nothing on disk).",
+        "The login items list itself can't be read without sudo. Instead, this checks the start-up helpers inside apps and what is running now."],
       theme_to_light: "Switch to light theme", theme_to_dark: "Switch to dark theme",
       radar_stop: "Stop", radar_go: "Start", radar_aria: "Radar sweep"
     }
