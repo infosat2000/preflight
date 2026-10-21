@@ -196,7 +196,8 @@ def judge_program(prog, script, names, ioc_hit=False):
     sig = {"kind": None, "team": "", "signer": "", "valid": None}
     if exists and not script:
         sig = signature(prog)
-    if claim and not ("apple" in flags and claim == "apple"):
+    # 動かす先が無いものは動けないので、名乗りだけで偽物とはしない（アプリを消したあとに残った plist など）
+    if claim and exists and not ("apple" in flags and claim == "apple"):
         if script or not genuine(claim, sig):
             flags.append("fake" + claim.capitalize())
     if not exists:

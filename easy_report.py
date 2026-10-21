@@ -1269,7 +1269,8 @@ def aikeys_findings(k, todo, good):
     if not k or not any(k.get(x) for x in ("credFiles", "mcp", "cli")):
         return
     creds = k.get("credFiles") or []
-    open_files = [c for c in creds if c.get("private") is False]
+    # 鍵を入れるための置き場所（plain が None）か、平文の鍵が見つかったものだけ。鍵の無い設定ファイルは読めても困らない
+    open_files = [c for c in creds if c.get("private") is False and c.get("plain") is not False]
     plain = [c for c in creds if c.get("plain") and c.get("private") is not False and c["kind"] in PLAIN_FIX]
     mcp = k.get("mcp") or []
     mcp_keys = [m for m in mcp if m.get("secretValues")]
