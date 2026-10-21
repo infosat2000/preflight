@@ -17,7 +17,7 @@
 | `POST /unsubscribe` | 配信停止。メールソフトの「配信停止」ボタン（ワンクリック）にも対応 |
 | `GET /download?id=…&e=…&t=…` | 確認済みの人専用のダウンロード画面（ボタンを押すまで渡さない） |
 | `POST /download` | zip を渡す。期限切れや回数切れなら、登録のアドレスに新しいリンクを送る（10分に1回まで） |
-| 1時間ごと（cron） | 3日後の案内を送る（1回に10通まで）。古い記録を消す |
+| 1時間ごと（cron） | 3日後の案内を送る（1回に10通まで）。`NEWS` を入れたときは、新しい版のお知らせを送る（1回に `NEWS_PER_RUN` 通まで）。古い記録を消す |
 
 守っていること:
 
@@ -103,6 +103,33 @@ npx wrangler tail   # 申し込みを試すと、送るはずのメールがロ�
 ### 7. 本番にする（最後）
 
 紹介ページから自分のアドレスで申し込み、ログに確認メールが出ることを確かめてから、`SEND_MODE = "live"` にして `npx wrangler deploy` します。自分宛てに確認メール・ダウンロードの案内が届き、専用リンクから zip を受け取れ、配信停止のリンクで止まることを確かめてください。
+
+## 新しい版のお知らせを送る
+
+確認済みで配信を止めていない人に、新しい版が出たことを、その人専用のダウンロードのリンクつきで1通ずつ送ります。
+
+1. 文面は `src/emails.js` の `NEWS` に、版ごとに日本語と英語で書く。`notBefore` には、その版を main に入れた時刻を書く。
+2. 配る zip を新しい版に置き換える（`./upload-zip.sh`）。**R2 の zip が `notBefore` より後に置き換わるまでは、1通も送りません。** 古い zip のリンクを配らないためです。
+3. いま本番で使っている値に `NEWS` を足して入れ直す。本番の値は `wrangler.toml` に書いていないので、`--var` で毎回渡します（渡さないと試し運転に戻ります）。
+
+```sh
+npx wrangler deploy --var SEND_MODE:live --var SOURCE_URL:https://github.com/infosat2000/preflight \
+  --var ALLOWED_ORIGINS:https://blackboxblast.com --var NEWS:1.2.0
+```
+
+そのあとは毎時の cron が、1回に `NEWS_PER_RUN` 通（初めは3通。1日で最大72通）ずつ送ります。送った人は `events` に `send` / `news:1.2.0` と残るので、二度は送りません。送り終わったかは次で確かめられます。
+
+```sh
+npx wrangler d1 execute preflight-signup --remote --command "SELECT COUNT(*) FROM events WHERE kind='send' AND detail='news:1.2.0'"
+npx wrangler d1 execute preflight-signup --remote --command "SELECT lang, COUNT(*) FROM subscribers WHERE status='active' GROUP BY lang"
+```
+
+送らない人:
+
+- 配信を止めた人と、確認を済ませていない人。
+- zip を置き換えた後に登録した人と、置き換えた後に新しいリンクを受け取った人（もう新しい版を持っているため）。
+
+途中で止めたいときは、`NEWS` を渡さずに（上の `--var NEWS:1.2.0` だけを外して）入れ直します。
 
 ## テスト
 

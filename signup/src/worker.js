@@ -6,10 +6,10 @@
 //   POST /unsubscribe   配信停止（メールソフトのワンクリック停止 RFC 8058 もここに来る）
 //   GET  /download      確認済みの人専用のダウンロード画面（ボタンを押すと zip を渡す。期限切れなら新しいリンクを送れる）
 //   POST /download      zip を渡す（R2 の非公開の置き場から）／ action=resend で新しいリンクをメールで送る
-//   cron（毎時）         3日後・7日後のメール、期限切れの確認待ちと、保存期間を過ぎた記録の削除
+//   cron（毎時）         3日後のメール、新しい版のお知らせ（NEWS を入れたとき）、期限切れの確認待ちと、保存期間を過ぎた記録の削除
 //
 // SEND_MODE が "live" でない間は、Resend を呼ばずにログに出すだけ（設定の途中で誤って送らないため）。
-import { renderEmail } from "./emails.js";
+import { renderEmail, NEWS } from "./emails.js";
 
 export const CONSENT = {
   ja: "メールアドレスを登録すると、ダウンロードの案内のほか、使い方のご案内と、更新や注意が必要なセキュリティ情報のお知らせをお送りします。いつでも配信を止められます。",
@@ -64,6 +64,8 @@ function settings(env) {
     downloadKey: env.DOWNLOAD_KEY || "",          // R2 の中の zip の名前（例: Preflight.zip）
     downloadName: env.DOWNLOAD_NAME || "BB-Preflight.zip",
     sourceUrl: env.SOURCE_URL || "",              // リポジトリを公開したら入れる。空ならメールに載せない
+    news: env.NEWS || "",                         // お知らせを送る版（emails.js の NEWS）。空なら送らない
+    newsPerRun: Math.max(1, Math.min(50, Number(env.NEWS_PER_RUN) || 3)), // 1回（毎時）に送るお知らせの数
     live: env.SEND_MODE === "live",
   };
 }
@@ -161,8 +163,8 @@ export async function sendEmail(env, s, sub, kind, extra = {}, fetchImpl = fetch
   };
   if (s.live) {
     // 特定電子メール法の表示（送信者・所在地・連絡先）が欠けたまま送らない
-    const missing = ["from", "publicBase", "senderName", "senderAddress", "contact", ...(kind === "welcome" ? ["downloadKey"] : [])].filter((k) => !s[k]);
-    if (kind === "welcome" && !env.DOWNLOADS) missing.push("DOWNLOADS (R2)");
+    const missing = ["from", "publicBase", "senderName", "senderAddress", "contact", ...(kind === "welcome" || kind === "news" ? ["downloadKey"] : [])].filter((k) => !s[k]);
+    if ((kind === "welcome" || kind === "news") && !env.DOWNLOADS) missing.push("DOWNLOADS (R2)");
     if (missing.length) throw new Error(`not configured: ${missing.join(", ")}`);
   } else {
     // 試し運転では、本文と URL の形だけを見られるようにする（宛先は伏せ、リンクの合言葉は消す）
@@ -396,6 +398,7 @@ export async function runScheduled(env, { now = Date.now(), fetchImpl = fetch, l
       }
     }
   }
+  const news = await sendNews(env, s, { now, fetchImpl });
   // 確認されないまま期限を過ぎた申し込みは消す
   const stale = await db.prepare("SELECT id, email FROM subscribers WHERE status = 'pending' AND confirm_sent_at < ?").bind(iso(now - CONFIRM_TTL)).all();
   // 配信を止めて、最後の送信と停止の両方から保存期間を過ぎたものは、記録ごと消す
@@ -409,7 +412,39 @@ export async function runScheduled(env, { now = Date.now(), fetchImpl = fetch, l
   }
   // 申し込みの記録（いたずら調査用）は、名簿に残っていない人の分を 31 日で消す
   await db.prepare("DELETE FROM events WHERE at < ? AND email NOT IN (SELECT email FROM subscribers)").bind(iso(now - KEEP_AFTER)).run();
-  return { sent, removed };
+  return { sent: [...sent, ...news.sent], removed, ...(news.waiting ? { newsWaiting: news.waiting } : {}) };
+}
+
+// 新しい版のお知らせを、確認済みで配信を止めていない人に、1回に newsPerRun 通ずつ送る。
+// - R2 の zip が NEWS の notBefore より後に置き換わるまでは、1通も送らない（古い zip を配らないように）
+// - zip を置き換えた後に登録した人や、新しいリンクを受け取った人は、もう新しい版を持っているので送らない
+// - 送ったことは events に 'send' / 'news:<版>' で残し、同じ人に二度送らない
+export async function sendNews(env, s, { now = Date.now(), fetchImpl = fetch } = {}) {
+  if (!s.news) return { sent: [] };
+  const item = NEWS[s.news];
+  if (!item) return { sent: [], waiting: `unknown NEWS ${s.news}` };
+  const head = env.DOWNLOADS && s.downloadKey ? await env.DOWNLOADS.head(s.downloadKey) : null;
+  const uploaded = head && head.uploaded ? new Date(head.uploaded).getTime() : NaN;
+  if (!(uploaded > Date.parse(item.notBefore))) return { sent: [], waiting: "zip not replaced yet" };
+  const tag = `news:${s.news}`;
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM subscribers s WHERE status = 'active' AND confirmed_at < ?
+       AND NOT EXISTS (SELECT 1 FROM events e WHERE e.email = s.email AND ((e.kind = 'send' AND e.detail = ?) OR (e.kind = 'relink' AND e.at >= ?)))
+     ORDER BY id LIMIT ?`,
+  ).bind(iso(uploaded), tag, iso(uploaded), s.newsPerRun).all();
+  const sent = [];
+  for (const sub of results) {
+    try {
+      const r = await sendEmail(env, s, { ...sub }, "news", { newsId: s.news, downloadUrl: await downloadLink(env, s, sub, now), idempotencyKey: `news-${s.news}-${sub.id}` }, fetchImpl);
+      if (r && r.dry) continue; // 試し運転では「送った」と記録しない（本番にしたときに、ちゃんと届くように）
+      await env.DB.prepare("UPDATE subscribers SET last_sent_at = ? WHERE id = ?").bind(iso(now), sub.id).run();
+      await logEvent(env.DB, sub.email, "send", tag, null, now);
+      sent.push(`${sub.id}:${tag}`);
+    } catch (err) {
+      console.error("news failed", sub.id, err && err.message); // 次の回にもう一度試す
+    }
+  }
+  return { sent };
 }
 
 // ------------------------------------------------------------ 入口

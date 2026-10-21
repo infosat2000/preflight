@@ -1,6 +1,7 @@
 // メールの文面（日本語・英語）。どれもテキストと HTML の両方を作る。
 // 宣伝に当たるメール（ようこそ・3日後・7日後）には、特定電子メール法の表示（送信者・所在地・連絡先・配信停止）を末尾に付ける。
 // 確認メールは本人確認だけなので宣伝は入れないが、送り主は同じように書く。
+// 新しい版のお知らせ（news）は NEWS に版ごとに書き、wrangler の NEWS にその版を入れると、毎時の cron が少しずつ送る。
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -103,10 +104,49 @@ const T = {
   },
 };
 
-// kind: 'confirm' | 'welcome' | 'step1'
+// 新しい版のお知らせ。notBefore より後に R2 の zip が置き換わるまでは送らない（古い zip を配らないように）
+export const NEWS = {
+  "1.2.0": {
+    notBefore: "2026-10-21T02:41:25Z", // 1.2.0 を main に入れた時刻
+    ja: {
+      subject: "BB Preflight 1.2.0 を出しました（点検は20項目に）",
+      body: (v) => [
+        "BB Preflight を 1.2.0 にしました。点検は14項目から20項目になりました。",
+        "今年報告された Mac の情報を盗むマルウェアは、多くが Apple や Google を名乗るアプリを置いていきます。1.2.0 では、この偽装と、自動で起動するような居座りも見るようにしました。",
+        "新しく見る6つ:\n・自動で起動するもの（LaunchAgents などが動かすプログラムの場所と署名）\n・名前を偽ったアプリ（Apple や Google を名乗るのに、本物の署名がないもの）\n・シェルと git への居座り（~/.zshrc などと、git の全体のフック）\n・フォルダを開くだけで動く仕掛け（.claude/settings.json のフック、.vscode/tasks.json など）\n・AI ツールの鍵と版（鍵のファイルの置き方、MCP の設定、既知の脆弱性を直した版か）\n・ブラウザの拡張機能",
+        "ほかに、届いた macOS の更新が入っていないときにも知らせます。OCLP で動く Mac には更新を勧めず、「新しい版にすると再起動できなくなることがある」と注意だけ出します。",
+        "これまでどおり読むだけで、何も変えず、結果をどこかに送ることもありません。ウイルス対策ソフトの代わりではありません。",
+        "1.2.0 は、ここから受け取れます。あなた専用のリンクで、7日間、5回まで使えます。",
+        v.downloadUrl,
+        "入れ替え方:\n1. 受け取った zip を開くと、BB-Preflight フォルダができます。\n2. 前の版の BB-Preflight フォルダをゴミ箱に入れ、新しいフォルダを同じ場所に置きます。名前が「BB-Preflight 2」になっていたら、「BB-Preflight」に直してください。\n3. いつもどおり BB Preflight を開きます。台帳と前回の結果はそのまま残るので、書き直す必要はありません。",
+        "新しい点検で、自分で入れた自動起動などが黄色に出ることがあります。心当たりのあるものは、~/.bb-preflight/known.txt に名前を1行ずつ書くと、次から「確認済み」になります。赤の印は、書いても消えません。",
+        `リンクの期限が切れたら、リンクを開くと新しいリンクを受け取れます。紹介ページで同じメールアドレスを入れ直しても届きます: ${v.siteBase}/ja/preflight/`,
+        ...(v.sourceUrl ? [`変更の記録（CHANGELOG）: ${v.sourceUrl}/blob/main/CHANGELOG.md`] : []),
+      ],
+    },
+    en: {
+      subject: "BB Preflight 1.2.0 is out (now 20 checks)",
+      body: (v) => [
+        "BB Preflight 1.2.0 is out. It now runs 20 checks, up from 14.",
+        "Many of the Mac infostealers reported this year drop an app that pretends to be Apple or Google. 1.2.0 now looks for that disguise and the places malware hides to stay.",
+        "The 6 new checks:\n- What starts on its own (where the programs run by LaunchAgents and the like live, and who signed them)\n- Apps with fake names (claiming to be Apple or Google without a genuine signature)\n- Hooks in your shell and git (~/.zshrc and friends, and global git hooks)\n- Folders that run code when opened (.claude/settings.json hooks, .vscode/tasks.json, and so on)\n- AI tool keys and versions (how key files are stored, MCP settings, and whether known vulnerabilities are fixed)\n- Browser extensions",
+        "It also tells you when an Apple update is waiting to be installed. On Macs running OCLP it never suggests updating; it only warns that an update may leave the Mac unable to start.",
+        "As before, it only reads. It changes nothing and sends your results nowhere. It is not a replacement for antivirus software.",
+        "Get 1.2.0 here. The link is just for you and works 5 times within 7 days.",
+        v.downloadUrl,
+        "To swap in the new version:\n1. Open the zip. You'll get a BB-Preflight folder.\n2. Move your old BB-Preflight folder to the Trash and put the new one in the same place. If it's called \"BB-Preflight 2\", rename it to \"BB-Preflight\".\n3. Open BB Preflight as usual. Your list and your last results stay where they are, so there's nothing to redo.",
+        "The new checks may show things you set up yourself in yellow. For the ones you recognize, add their names to ~/.bb-preflight/known.txt, one per line, and they'll show as confirmed next time. Red flags stay red even if listed.",
+        `If the link expires, open it and you can ask for a new one. You can also enter the same email on the BB Preflight page again: ${v.siteBase}/en/preflight/`,
+        ...(v.sourceUrl ? [`What changed (CHANGELOG): ${v.sourceUrl}/blob/main/CHANGELOG.md`] : []),
+      ],
+    },
+  },
+};
+
+// kind: 'confirm' | 'welcome' | 'step1' | 'news'（v.newsId の版のお知らせ）
 export function renderEmail(kind, lang, v) {
   const t = T[lang] || T.ja;
-  const m = t[kind];
+  const m = kind === "news" ? NEWS[v.newsId] && (NEWS[v.newsId][lang] || NEWS[v.newsId].ja) : t[kind];
   if (!m) throw new Error(`unknown email kind: ${kind}`);
   const ad = kind !== "confirm";
   const lines = m.body(v);
@@ -117,7 +157,7 @@ export function renderEmail(kind, lang, v) {
     if (s && /^https?:\/\//.test(s)) {
       return `<p><a href="${esc(s)}" style="display:inline-block;padding:10px 18px;background:#ff7a1a;color:#0c0d0f;font-weight:700;text-decoration:none;border-radius:4px">${esc(linkLabel[s] || s)}</a></p><p style="font-size:12px;color:#666;word-break:break-all">${esc(s)}</p>`;
     }
-    return `<p>${esc(s)}</p>`;
+    return `<p>${esc(s).replace(/\n/g, "<br>")}</p>`;
   };
   const footHtml = foot.map((s) => {
     if (ad && s.endsWith(v.unsubUrl)) {

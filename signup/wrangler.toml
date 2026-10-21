@@ -21,7 +21,7 @@ database_id = "9afbcc76-c70a-4863-bc1d-e0d2448ff3a7"   # 2026-10-14 作成（APA
 binding = "DOWNLOADS"
 bucket_name = "preflight-downloads"
 
-# 1時間に1回、3日後・7日後の案内と、古い記録の片付けをする
+# 1時間に1回、3日後の案内、新しい版のお知らせ（NEWS を入れたとき）と、古い記録の片付けをする
 [triggers]
 crons = ["17 * * * *"]
 
@@ -39,6 +39,8 @@ DOWNLOAD_KEY = "latest/Preflight.zip"   # R2 の中で、いま配る zip。uplo
 DOWNLOAD_NAME = "BB-Preflight.zip"       # 受け取った人の手元での名前
 TEST_ADDRESS = ""                       # 試し運転のときだけ、このアドレス宛てのリンクをログに伏せずに出す。本番の前に空に戻す
 SOURCE_URL = ""                         # リポジトリを公開する日に https://github.com/infosat2000/preflight を入れる
+NEWS = ""                               # 新しい版のお知らせを送るときだけ、その版（例 1.2.0。src/emails.js の NEWS）を入れる
+NEWS_PER_RUN = "3"                      # お知らせを1回（毎時）に何通送るか。Resend の無料枠（1日100通）に収める
 
 # 秘密の値（wrangler secret put <名前> で入れる）:
 #   RESEND_API_KEY    Resend の API キー（送信だけの権限、このドメインだけ）
