@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """実測（読み取り専用）: このMacの待ち受け・ファイアウォール・公開URL・AIエージェント周りを調べて facts.json に書く。
+居座り・偽装・開くだけで動く仕掛け・AI ツールの鍵と版・拡張機能は collect_extra.py。
 
 - 何も変更しない（kill・設定変更なし）。秘密情報の値は出力しない（ファイル名と件数のみ）。
 - /usr/bin/python3 (3.9) で動く書き方にする（3.10 以降の記法は使わない）。
@@ -20,6 +21,8 @@ import socket
 import time
 import subprocess
 import sys
+
+import collect_extra
 
 HOME = os.path.expanduser("~")
 
@@ -238,8 +241,10 @@ def npm_protection():
     """
     npm = shutil.which("npm")
     used = bool(npm) or os.path.isdir(os.path.join(HOME, ".npm"))
-    ignore = None
+    ignore, version = None, ""
     if npm:
+        m = re.search(r"^(\d+\.\d+\.\d+)", run([npm, "--version"]).strip())
+        version = m.group(1) if m else ""
         out = run([npm, "config", "get", "ignore-scripts"]).strip().lower()
         if out in ("true", "false"):
             ignore = out == "true"
@@ -274,7 +279,9 @@ def npm_protection():
             "medium": count["medium"],
             "stale": not isinstance(quick, (int, float)) or time.time() - quick > GUARD_STALE_DAYS * 86400,
         }
-    return {"used": used, "ignoreScripts": ignore, "guard": guard}
+    # npm 12 からは、依存パッケージの install スクリプトが標準で動かない（allowScripts で許したものだけ）
+    return {"used": used, "ignoreScripts": ignore, "guard": guard, "version": version,
+            "scriptsOffByDefault": bool(version) and int(version.split(".")[0]) >= 12}
 
 
 TOOL_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -517,8 +524,15 @@ def main():
         ("timeMachine", "バックアップ", time_machine),
         ("macGuard", "Mac の守り", mac_guard),
         ("updates", "更新の設定", update_settings),
+        ("autostart", "自動で起動するもの", lambda: collect_extra.autostart(facts["agents"]["claude_launchd_jobs"])),
+        ("disguise", "名前を偽ったアプリと既知の痕跡", collect_extra.disguise),
+        ("shell", "シェルと git の常駐", collect_extra.shell_persistence),
+        ("openToRun", "開くだけで動く仕掛け", lambda: collect_extra.open_to_run(roots, SKIP_DIRS, SCAN_DEPTH)),
+        ("aiKeys", "AI ツールの鍵と版", collect_extra.ai_keys),
+        ("extensions", "ブラウザの拡張機能", collect_extra.browser_extensions),
     ]
-    facts = {"measuredAt": datetime.datetime.now().isoformat(timespec="seconds")}
+    facts = {"measuredAt": datetime.datetime.now().isoformat(timespec="seconds"),
+             "iocUpdated": collect_extra.load_ioc().get("updated", "")}
     started = time.time()
     for i, (key, label, fn) in enumerate(steps, 1):
         # 進み具合は stderr に出す（stdout の最後の1行は run.sh の結果表示に使う）

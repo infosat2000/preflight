@@ -19,6 +19,51 @@ def version():
         return f.read().strip()
 
 
+def threat_lines(facts, L, T):
+    """1.2.0 で足した実測（居座り・偽装・開くだけで動く仕掛け・AI ツールの鍵と版・拡張機能）の要約。値や行の中身は出さない。"""
+    a = facts.get("autostart")
+    if a is not None:
+        flagged = [x for x in a.get("items", []) if set(x.get("flags", [])) - {"claudeJob", "disabled", "pkg", "apple", "missing", "oclp"}]
+        L.append(T("- 自動で起動するもの: plist %d 件・アプリ内の部品 %d 件（印の付いたもの %d 件。ログイン項目の一覧そのものは sudo なしでは読めない）",
+                   "- Things that start on their own: %d plists, %d helpers inside apps (%d flagged; the login items list itself can't be read without sudo)") % (
+            a.get("total", 0), a.get("bundled", 0), len(flagged)))
+        for x in flagged:
+            L.append("  - `%s` → `%s`: %s / %s" % (x["label"], x.get("program", ""), ", ".join(x["flags"]), (x.get("sign") or {}).get("kind") or "-"))
+    d = facts.get("disguise")
+    if d is not None:
+        L.append(T("- 偽装・痕跡（照らした一覧: %s 時点）: 名乗りと署名が合わない %d 件・既知の痕跡 %d 件・一時置き場から動く %d 件・改ざんされたウォレット %d 件",
+                   "- Disguise and traces (list as of %s): name/signature mismatch %d, known traces %d, running from temp %d, tampered wallets %d") % (
+            d.get("iocUpdated") or "-", len(d.get("fakes", [])), len(d.get("ioc", [])), len(d.get("running", [])),
+            len([w for w in d.get("wallets", []) if w.get("tampered")])))
+        for x in d.get("fakes", []) + d.get("running", []):
+            L.append("  - `%s`: %s / %s %s" % (x["file"], x.get("claim") or "-", (x.get("sign") or {}).get("kind") or "-", (x.get("sign") or {}).get("team") or ""))
+        for x in d.get("ioc", []):
+            L.append("  - `%s` (%s)" % (x["file"], x.get("source", "")))
+    sh = facts.get("shell")
+    if sh is not None:
+        hits = ["%s:%d (%s)" % (f["file"], h["line"], ", ".join(h["kinds"])) for f in sh.get("files", []) for h in f.get("hits", [])]
+        L.append(T("- シェルの起動ファイル: %s", "- Shell startup files: %s") % (", ".join(hits) or T("気になる行なし", "nothing suspicious")))
+        for g in sh.get("git", []):
+            L.append("  - git %s = `%s`: %s" % (g["setting"], g["dir"], ", ".join(g.get("hooks", [])) or "-"))
+    o = facts.get("openToRun")
+    if o is not None:
+        L.append(T("- 開くだけで動く仕掛け: Claude のフック %d 件・folderOpen のタスク %d 件・ワームのファイル名 %d 件・見えない文字 %d 件（~/.claude の全体フック %d 個は数えるだけ）",
+                   "- Open-to-run: Claude hooks %d, folderOpen tasks %d, worm file names %d, hidden characters %d (%d global hooks in ~/.claude only counted)") % (
+            len(o.get("hooks", [])), len(o.get("tasks", [])), len(o.get("ioc", [])), len(o.get("hidden", [])), o.get("globalHooks", 0)))
+    k = facts.get("aiKeys")
+    if k:
+        L.append(T("- AI ツールの鍵と版: 鍵のファイル %d 個・MCP %d 個（平文の鍵あり %d・http %d・版を固定しない %d）・%s",
+                   "- AI tool keys and versions: key files %d, MCP servers %d (plain keys %d, http %d, unpinned %d), %s") % (
+            len(k.get("credFiles", [])), len(k.get("mcp", [])), len([m for m in k.get("mcp", []) if m.get("secretValues")]),
+            len([m for m in k.get("mcp", []) if m.get("insecureUrl")]), len([m for m in k.get("mcp", []) if m.get("unpinned")]),
+            ", ".join("%s %s%s" % (c["name"], c["version"], T("（%s 未満 %s）" % (c["fixed"], c["cve"]), " (< %s %s)" % (c["fixed"], c["cve"])) if c.get("old") else "")
+                      for c in k.get("cli", [])) or "-"))
+    e = facts.get("extensions")
+    if e:
+        L.append(T("- ブラウザの拡張機能: %d 個（ストア外 %d・既知の悪いもの %d）", "- Browser extensions: %d (off-store %d, known bad %d)") % (
+            e.get("total", 0), len([x for x in e.get("items", []) if not x.get("store")]), len([x for x in e.get("items", []) if x.get("bad")])))
+
+
 def build(out, lang):
     J = lang == "ja"
 
@@ -109,6 +154,10 @@ def build(out, lang):
                                                      "last scan %s, unchecked: %d serious, %d to check%s") % (
                 g.get("lastScanAt", "").replace("T", " ") or "-", g.get("high", 0), g.get("medium", 0),
                 T("・日次が止まっている", ", daily scan stopped") if g.get("stale") else "")))
+        if n.get("version"):
+            L.append(T("  - npm の版: %s（12 以上は install スクリプトが標準で止まる: %s）", "  - npm version: %s (12+ blocks install scripts by default: %s)") % (
+                n["version"], T("はい", "yes") if n.get("scriptsOffByDefault") else T("いいえ", "no")))
+    threat_lines(facts, L, T)
     L.append("")
 
     L.append(T("## 2. 前回との差分", "## 2. Changes since the last run"))
