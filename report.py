@@ -62,6 +62,20 @@ def threat_lines(facts, L, T):
     if e:
         L.append(T("- ブラウザの拡張機能: %d 個（ストア外 %d・既知の悪いもの %d）", "- Browser extensions: %d (off-store %d, known bad %d)") % (
             e.get("total", 0), len([x for x in e.get("items", []) if not x.get("store")]), len([x for x in e.get("items", []) if x.get("bad")])))
+    sx = facts.get("strix")
+    if sx is not None:
+        L.append(T("- AI のペンテスト（Strix）: コマンド %s・全体のスキル %d 個・プロジェクトのスキル %d か所・結果のあるプロジェクト %d 件",
+                   "- AI pentesting (Strix): command %s, global skills %d, project skills %d, projects with results %d") % (
+            T("あり", "yes") if sx.get("installed") else T("なし", "no"), len(sx.get("globalSkills", [])),
+            len(sx.get("projectSkills", [])), len(sx.get("projects", []))))
+        for p in sx.get("projects", []):
+            r = p["latest"]
+            f = r.get("findings", {})
+            L.append(T("  - %s: 最新 %s（%s・%s%s）重大 %d・高 %d・中 %d・低 %d",
+                       "  - %s: latest %s (%s, %s%s) critical %d, high %d, medium %d, low %d") % (
+                p["dir"], r.get("endedAt") or "-", r.get("scanMode") or "-", r.get("status"),
+                T("・予算で停止", ", budget stop") if r.get("budgetStop") else "",
+                f.get("critical", 0), f.get("high", 0), f.get("medium", 0), f.get("low", 0)))
 
 
 def build(out, lang):

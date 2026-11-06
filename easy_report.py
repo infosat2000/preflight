@@ -66,9 +66,10 @@ CHECKS = [
     ("repo", t("開くだけで動く仕掛け", "Code that runs when a folder opens")),
     ("aikeys", t("AI ツールの鍵と版", "AI tool keys and versions")),
     ("ext", t("ブラウザの拡張機能", "Browser extensions")),
+    ("strix", t("AI のペンテスト（Strix）", "AI pentesting (Strix)")),
 ]
 # 実測できなかった（その Mac で読めなかった・対象がない）ときは、チェックリストに出さない項目
-OPTIONAL = {"npm", "aiperm", "guard", "update", "disk", "ssh", "backup", "autostart", "disguise", "shell", "repo", "aikeys", "ext"}
+OPTIONAL = {"npm", "aiperm", "guard", "update", "disk", "ssh", "backup", "autostart", "disguise", "shell", "repo", "aikeys", "ext", "strix"}
 # 1.2.0 で足した項目。どれも「このMacの中」に置くもの
 THREAT_CATS = ("autostart", "disguise", "shell", "repo", "aikeys", "ext")
 
@@ -127,6 +128,8 @@ SECRET_KINDS = {
     "aws": t("AWS のアクセスキー", "AWS access key"),
     "groq": t("Groq の API キー", "Groq API key"),
     "npm": t("npm の公開用トークン", "npm publish token"),
+    "openai": t("OpenAI の API キー", "OpenAI API key"),
+    "openrouter": t("OpenRouter の API キー", "OpenRouter API key"),
     "private_key": t("秘密鍵", "private key"),
 }
 
@@ -539,7 +542,7 @@ def entry_map(facts, todo):
     elif "secrets" in facts:
         mac.append(item("keys", t("鍵の置き忘れなし", "No stray keys"), GREEN))
     skip = present(facts)
-    for cat, label in ((c, l) for c, l in CHECKS if c in ("npm", "aiperm", "guard", "update", "disk", "ssh", "backup") + THREAT_CATS):
+    for cat, label in ((c, l) for c, l in CHECKS if c in ("npm", "aiperm", "guard", "update", "disk", "ssh", "backup") + THREAT_CATS + ("strix",)):
         if cat not in skip:
             mac.append(item(cat, label, lvl.get(cat, GREEN)))
     if facts.get("remoteApps"):
@@ -1121,6 +1124,7 @@ def threat_findings(facts, todo, good):
     repo_findings(facts.get("openToRun"), todo, good)
     aikeys_findings(facts.get("aiKeys"), todo, good)
     ext_findings(facts.get("extensions"), todo, good)
+    strix_findings(facts.get("strix"), facts.get("aiPermissions"), todo, good)
 
 
 def autostart_findings(a, todo, good, known=None):
@@ -1355,7 +1359,8 @@ def repo_findings(r, todo, good):
 
 
 CRED_NAME = {"git": "Git", "npm": "npm", "gh": "GitHub CLI", "docker": "Docker", "netrc": ".netrc", "pypi": "PyPI",
-             "aws": "AWS", "codex": "Codex", "gemini": "Gemini CLI", "copilot": "GitHub Copilot", "claude": "Claude Code"}
+             "aws": "AWS", "codex": "Codex", "gemini": "Gemini CLI", "copilot": "GitHub Copilot", "claude": "Claude Code",
+             "strix": "Strix", "strix-cloud": "Strix Cloud"}
 PLAIN_FIX = {
     "git": t("git config --global credential.helper osxkeychain にして、~/.git-credentials を消します",
              "Run git config --global credential.helper osxkeychain, then delete ~/.git-credentials"),
@@ -1367,6 +1372,10 @@ PLAIN_FIX = {
                 "Add \"credsStore\": \"osxkeychain\" to ~/.docker/config.json and run docker login again"),
     "netrc": t("~/.netrc のパスワードは、パスワード管理アプリかキーチェーンに移します", "Move the passwords in ~/.netrc to a password manager or Keychain"),
     "pypi": t("~/.pypirc のパスワードを消し、keyring を使う形にします", "Remove the password from ~/.pypirc and use keyring instead"),
+    "strix": t("~/.strix/cli-config.json から LLM_API_KEY の行を消し、鍵はキーチェーンに入れて、使うときだけ "
+               "LLM_API_KEY=$(security find-generic-password -s strix-llm -w) strix … の形で渡します",
+               "Remove the LLM_API_KEY line from ~/.strix/cli-config.json, keep the key in Keychain, and pass it only when you run it, "
+               "like LLM_API_KEY=$(security find-generic-password -s strix-llm -w) strix …"),
 }
 
 
@@ -1515,6 +1524,169 @@ LABEL_EN = [
 LABEL_EN_LAST = [(r"（例）", " (example)"), (r"（(.*?)）", r" (\1)")]
 
 
+STRIX_RULES = t("Strix は、向けた相手に本当に攻撃を試す道具です。調べてよいのは自分のものか、書面で許可をもらったものだけです。"
+                "本番のサイトに向けると、本物のメールが送られたりデータが書き込まれたりします。"
+                "手元のフォルダは書き換えられる形でつながるので、渡すのは複製にします。",
+                "Strix really attacks whatever you point it at. Only test things you own or have written permission to test. "
+                "Pointed at a live site, it can send real emails and write real data. "
+                "It mounts local folders so they can be changed, so give it a copy.")
+
+
+STRIX_GUIDE = "https://github.com/infosat2000/preflight/blob/main/docs/strix-guide.md"
+
+
+def next_steps(facts):
+    """このMacの問題ではないが、使っている人の役に立つ次の一歩（任意）。赤・黄の数や総合判定には入れない。
+    自分の公開サイトを台帳に書いていて、Strix の結果がまだないとき、自分のアプリの穴を AI に探してもらう方法を案内する。"""
+    res = []
+    s = facts.get("strix")
+    if facts.get("urls") and not (s and s.get("projects")):
+        res.append({
+            "cat": "strix", "level": "next", "effort": HELP, "link": STRIX_GUIDE,
+            "title": t("自分のアプリの穴を、AI に探してもらう（Strix）", "Have an AI look for holes in your own app (Strix)"),
+            "what": t("この点検は Mac の戸締まりを見るもので、自分で作ったアプリの中の穴（番号を1つ変えると他人の予約が見える、など）は見ていません。"
+                      "公開しているサイトがあるなら、無料公開の AI ペンテスト道具 Strix で、その穴を探せます。",
+                      "This check looks at how your Mac is locked down. It does not look for holes inside apps you built (like seeing someone else's "
+                      "booking by changing one number). If you run public sites, the free, open-source AI pentesting tool Strix can look for those holes."),
+            "why": t("ログインがあっても他人の情報が見える、といった穴は、画面の上では普通に動くので気づけません。こうしたアクセス制御の不備は、OWASP Top 10 の 2025 年版で1位です。",
+                     "A hole like seeing other people's data despite a login works normally on screen, so you won't notice it. "
+                     "Broken access control like this is number one in the 2025 OWASP Top 10."),
+            "how": t("説明を読み、自分のアプリの複製に、quick モード・予算の上限つきで試します。終わったら BB Preflight をもう一度開くと、結果を読んで、途中で止まっていないかを確かめます。",
+                     "Read the guide, then try it on a copy of your app in quick mode with a budget cap. Open BB Preflight again afterwards: "
+                     "it reads the results and checks whether the scan stopped early."),
+            "steps": [
+                t("下の「詳しい説明を読む」で、先に決めておく3つのこと（自分のものだけ・複製で・quick と上限）を読みます",
+                  "Read the three things to decide first in the guide below (only your own apps, work on a copy, quick mode with a cap)"),
+                t("試すアプリのフォルダを、~/strix-sandbox などに複製します。本番の鍵は置きません",
+                  "Copy the app folder to somewhere like ~/strix-sandbox. Don't keep production keys there"),
+                t("説明の手順どおりに Strix を版を固定して入れ、AI の鍵はキーチェーンに入れます",
+                  "Install Strix with a pinned version as the guide shows, and keep the AI key in Keychain"),
+                t("quick モード・上限3ドルで1回走らせます（指定しないと 1〜4 時間の deep になります）",
+                  "Run it once in quick mode with a $3 cap (without these it runs the 1-4 hour deep mode)"),
+                t("台帳の secretScanRoots に ~/strix-sandbox を足してから、BB Preflight をもう一度開きます",
+                  "Add ~/strix-sandbox to secretScanRoots in the inventory, then open BB Preflight again"),
+            ],
+            "time": t("約1時間（初回）", "About 1 hour (first time)"),
+            "keep": t("自分しか使わないもの、まだ公開していないもの、他人の情報を扱わないサイトなら、急ぐ必要はありません",
+                      "No rush if it's only for you, not yet public, or doesn't handle other people's data"),
+            "askAi": t("自分で作ったアプリの穴を、Strix で調べたいです。次の説明を読んでください: %s 。"
+                       "その説明の「先に決めておく3つのこと」を守り、私のアプリの複製を作るところから、一つずつ進めてください。"
+                       "何かを入れる・実行する前に、コマンドを見せて私に確かめてください。本番のサイトやほかのフォルダには向けず、"
+                       "鍵は画面やファイルに出さないでください。" % STRIX_GUIDE,
+                       "I want to check an app I built for holes with Strix. Please read this guide: %s . "
+                       "Follow its three rules and walk me through it step by step, starting with making a copy of my app. "
+                       "Show me each command and ask me before installing or running anything. Never point it at a live site or other folders, "
+                       "and never show keys on screen or write them to files." % STRIX_GUIDE),
+        })
+    return res
+
+
+def strix_counts(r):
+    f = r.get("findings") or {}
+    return f.get("critical", 0) + f.get("high", 0), f.get("medium", 0)
+
+
+def strix_when(r):
+    return same((r.get("endedAt") or "").replace("T", " ") or "-")
+
+
+def strix_findings(s, perms, todo, good):
+    """AI のペンテスト道具 Strix の結果を読むだけ。Strix は動かさない。入っていなければ何も出さない。"""
+    if not s:
+        return
+    latest = [(p["dir"], p["latest"]) for p in s.get("projects") or []]
+    hi = [(d, r) for d, r in latest if strix_counts(r)[0]]
+    mid = [(d, r) for d, r in latest if not strix_counts(r)[0] and strix_counts(r)[1]]
+    partial = [(d, r) for d, r in latest if not r.get("complete") or r.get("budgetStop")]
+    flagged = False
+    if hi:
+        flagged = True
+        rows = [(d, cat_text(t("重大・高 %d 件" % strix_counts(r)[0], "%d critical or high" % strix_counts(r)[0]),
+                             cat_text(t("：", ": "), join([same(w) for w in r["worst"]])) if r.get("worst") else t("", ""))) for d, r in hi]
+        todo.append(finding(
+            "strix", RED, t("Strix が、重い穴を見つけています", "Strix found serious security holes"),
+            cat_text(t("最後の Strix の走査で、まだ残っている可能性のある重い指摘があります: ",
+                       "The last Strix scan reported serious findings that may still be open: "), listing(rows)),
+            t("ログインがあっても他人の情報が見える、といった穴は、画面の上では普通に動くので気づけません。漏れた情報は取り戻せません。",
+              "Holes like seeing someone else's data despite a login work normally on screen, so you won't notice them. Leaked data can't be taken back."),
+            t("各 strix_runs の vulnerabilities.csv と、指摘ごとの Markdown を読み、直したら同じ手順で Strix をもう一度回して「直った」を確かめます。",
+              "Read vulnerabilities.csv and the per-finding Markdown in each strix_runs folder. After fixing, run Strix again the same way to confirm the fix."),
+            time=t("1件 30分〜", "30 min or more each"),
+            ask_ai=t("Strix の結果（%s の strix_runs の最新の回）を読み、重大・高の指摘を1件ずつ、何が起きるのか、本当に再現するのかをふつうの言葉で説明してください。"
+                     "直し方の案を見せてから直し、直したあとは同じ範囲だけを quick モード・上限つきで確かめ直してください。"
+                     "本番のサイトやデータには向けず、手元の複製で行ってください。" % ", ".join(d for d, _ in hi),
+                     "Read the Strix results (the latest run in strix_runs under %s). For each critical or high finding, explain in plain words "
+                     "what happens and whether it really reproduces. Show me the fix before applying it, then re-check only that scope in quick mode "
+                     "with a budget cap. Use a local copy, never the live site or real data." % ", ".join(d for d, _ in hi))))
+    if mid:
+        flagged = True
+        rows = [(d, t("中 %d 件" % strix_counts(r)[1], "%d medium" % strix_counts(r)[1])) for d, r in mid]
+        todo.append(finding(
+            "strix", YELLOW, t("Strix の指摘（重要度・中）が残っています", "Strix findings of medium severity remain"),
+            cat_text(t("最後の Strix の走査の指摘です: ", "From the last Strix scan: "), listing(rows)),
+            t("中の指摘も、ほかの穴と組み合わさると個人情報の漏えいにつながることがあります。",
+              "Medium findings can combine with other holes and lead to a leak of personal data."),
+            t("vulnerabilities.csv で中身を確かめ、直すか、直さない理由を書き残します。直したら同じ手順で確かめ直します。",
+              "Check vulnerabilities.csv, then fix each one or write down why you won't. Re-check the same way after fixing."),
+            time=t("1件 15分〜", "15 min or more each")))
+    if partial:
+        flagged = True
+        rows = []
+        for d, r in partial:
+            why = [t("予算の上限で止まった", "stopped at the budget cap")] if r.get("budgetStop") else []
+            if r.get("status") != "completed":
+                why.append(cat_text(t("状態: ", "status: "), same(r.get("status") or "unknown")))
+            if not why:
+                why.append(t("調べきれていない担当がある", "some agents did not finish"))
+            rows.append((d, cat_text(join(why), t("・", ", "), strix_when(r))))
+        todo.append(finding(
+            "strix", YELLOW, t("Strix の結果は、最後まで調べた結果ではありません", "The Strix result is not a full scan"),
+            cat_text(t("次の走査は途中で止まっています。指摘が0件でも「安全」という意味ではありません: ",
+                       "These scans stopped partway. Zero findings here does not mean safe: "), listing(rows)),
+            t("止まったあとの範囲は、まったく調べていません。",
+              "Nothing after the point where it stopped was checked."),
+            t("coverage.json の completeness と gaps で、どこまで調べたかを確かめます。続きは上限を少し上げてもう一度回します（上限は目安で、少し超えることがあります）。",
+              "Check completeness and gaps in coverage.json to see how far it got. To continue, run it again with a slightly higher cap "
+              "(the cap is an estimate and can be slightly exceeded)."),
+            SELF, time=t("約5分", "About 5 min")))
+    if s.get("globalSkills"):
+        flagged = True
+        bypass = bool((perms or {}).get("bypass"))
+        todo.append(finding(
+            "strix", RED if bypass else YELLOW,
+            t("Claude Code が、どのフォルダからでも Strix の攻撃の試験を始められます",
+              "Claude Code can start Strix attack tests from any folder"),
+            cat_text(t("Strix のスキルが、全体の置き場所に %d 個あります" % len(s["globalSkills"]),
+                       "%d Strix skill%s are installed globally" % (len(s["globalSkills"]), "" if len(s["globalSkills"]) == 1 else "s")),
+                     t("。しかも、確認なしで実行するモード（bypassPermissions）の設定があります。", ", and a setting lets it run without asking (bypassPermissions).")
+                     if bypass else t("。", ".")),
+            cat_text(STRIX_RULES, t("頼み方があいまいだと、思っていない相手や本物のフォルダに向けて動くことがあります。",
+                                    " A vague request can make it run against the wrong target or your real folder.")),
+            t("使う時だけ、試すプロジェクトの複製の .claude/skills に入れます。全体の置き場所（~/.claude/skills・~/.agents/skills）からは外します。",
+              "Put the skills in .claude/skills of a copy of the project only while you use them, and remove them from the global places "
+              "(~/.claude/skills, ~/.agents/skills)."),
+            SELF, [cat_text(t("Finder で次のフォルダをゴミ箱に入れます（戻せます）: ", "In Finder, move these folders to the Trash (you can restore them): "),
+                            join([same(x) for x in s["globalSkills"]])),
+                   RECHECK],
+            time=t("約5分", "About 5 min"),
+            keep=t("自分のアプリの複製だけに使い、毎回スキャンの対象と上限を指定して頼んでいるなら、そのままでも構いません",
+                   "If you only use it on copies of your own apps and always name the target and a budget cap, you can leave it")))
+    if not flagged:
+        done = [(d, r) for d, r in latest]
+        parts = []
+        if done:
+            parts.append(t("最後の Strix の走査（%d 件）は最後まで終わり、穴は見つかりませんでした。0件は「調べた範囲では」という意味で、"
+                           "どこまで調べたかは各回の coverage.json にあります。" % len(done),
+                           "The last Strix scans (%d) finished and found no holes. Zero means \"none within what was checked\"; "
+                           "each run's coverage.json shows how far it went. " % len(done)))
+        else:
+            parts.append(t("Strix は入っていますが、走査の結果は見つかりませんでした。", "Strix is installed, but no scan results were found. "))
+        if s.get("projectSkills"):
+            parts.append(t("Strix のスキルは、プロジェクト %d か所だけに置かれています。" % len(s["projectSkills"]),
+                           "Strix skills are only in %d project folder%s." % (len(s["projectSkills"]), "" if len(s["projectSkills"]) == 1 else "s")))
+        good("strix", cat_text(*parts))
+
+
 # 台帳の portNames に書くことが多い名前の英語（portNamesEn がなければこれを使う）
 PORT_NAMES_EN = {"22": "Remote Login (SSH)", "88": "Kerberos (for sharing)", "445": "File Sharing (SMB)",
                  "548": "File Sharing (AFP)", "631": "Printer Sharing (CUPS)", "3283": "Remote Management",
@@ -1592,6 +1764,7 @@ def present(facts):
         "repo": facts.get("openToRun") is not None,
         "aikeys": any((facts.get("aiKeys") or {}).get(k) for k in ("credFiles", "mcp", "cli")),
         "ext": bool(facts.get("extensions")),
+        "strix": facts.get("strix") is not None,
     }
     skip = [c for c in OPTIONAL if not has.get(c)]
     if "remoteApps" not in facts:
@@ -1685,6 +1858,7 @@ def build_data(facts, prev=None, detail=""):
         "map": entry_map(facts, todo),
         "todo": todo,
         "ok": ok,
+        "next": next_steps(facts),
         "diff": changes(prev, facts) if prev else None,
         "prevMeasuredAt": prev.get("measuredAt", "").replace("T", " ")[:16] if prev else "",
         "detail": detail,
