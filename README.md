@@ -1,5 +1,19 @@
 # BB Preflight（FOREST LIFE*）
 
+> **English** — A free, read-only security check for one Mac, made for people who build and run things with AI agents.
+> It measures what is actually there: listening ports, the firewall, plain-text API keys, what Claude Code and other AI agents are allowed to do (permission rules, MCP servers, scheduled `claude` jobs), things that start on their own, apps posing as Apple or Google, browser extensions, and the results of [Strix](https://github.com/usestrix/strix) AI pentest runs.
+> It writes a plain-language report (NO-GO / CAUTION / CLEAR, with step-by-step fixes and a ready-to-paste request for your AI) and a diff against the last run.
+> No sudo, changes nothing, sends nothing anywhere (the only outbound requests are status checks to your own URLs). Python 3.9 standard library only. Apache-2.0.
+>
+> ```bash
+> git clone https://github.com/infosat2000/preflight && cd preflight
+> ./setup.sh   # creates ~/.bb-preflight/inventory.json
+> ./run.sh     # measure and write the report to ~/.bb-preflight/out/<time>/
+> ```
+>
+> Claude Code users: `npx skills add infosat2000/preflight`, then ask "check this Mac". The report UI is in Japanese and English; this README is in Japanese.
+> Limits: one Mac only, not antivirus, and "nothing found" is not a guarantee.
+
 **Mac の実測結果から脅威モデルを自動で作り、IPA の注意喚起と 221 本の脅威ルールで点検するツール**
 
 このMacで実際に待ち受けているポート、ファイアウォールの状態、公開サイトの未認証応答、AI エージェントの定期ジョブ、平文の鍵などを読み取り専用で調べ、
