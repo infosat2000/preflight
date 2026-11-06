@@ -32,3 +32,14 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS events_ip ON events (ip_hash, at);
 CREATE INDEX IF NOT EXISTS events_email ON events (email, at);
+
+-- 紹介ページと BB の案内の閲覧・押された回数（1.3.0 の後に追加）。日付・種類・場所・言語ごとの件数だけで、
+-- 誰が見たか（IP・Cookie・ブラウザの情報）は残さない。日付は日本時間。
+CREATE TABLE IF NOT EXISTS hits (
+  day   TEXT NOT NULL,                       -- 'YYYY-MM-DD'（日本時間）
+  kind  TEXT NOT NULL,                       -- 'view'（見えた） | 'click'（押された）
+  place TEXT NOT NULL,                       -- 'page'（紹介ページ） | 'hero'（BB のトップ） | 'article'（記事の末尾）
+  lang  TEXT NOT NULL,                       -- 'ja' | 'en'
+  n     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, kind, place, lang)
+);

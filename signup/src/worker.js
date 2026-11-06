@@ -6,6 +6,7 @@
 //   POST /unsubscribe   配信停止（メールソフトのワンクリック停止 RFC 8058 もここに来る）
 //   GET  /download      確認済みの人専用のダウンロード画面（ボタンを押すと zip を渡す。期限切れなら新しいリンクを送れる）
 //   POST /download      zip を渡す（R2 の非公開の置き場から）／ action=resend で新しいリンクをメールで送る
+//   POST /hit           紹介ページと BB の案内の「見えた」「押された」を数える（件数だけ。誰が見たかは残さない）
 //   cron（毎時）         3日後のメール、新しい版のお知らせ（NEWS を入れたとき）、期限切れの確認待ちと、保存期間を過ぎた記録の削除
 //
 // SEND_MODE が "live" でない間は、Resend を呼ばずにログに出すだけ（設定の途中で誤って送らないため）。
@@ -447,6 +448,31 @@ export async function sendNews(env, s, { now = Date.now(), fetchImpl = fetch } =
   return { sent };
 }
 
+// ------------------------------------------------------------ 閲覧の数え方
+
+// BB の紹介ページ・トップ・記事末尾から navigator.sendBeacon で届く。本文は {"k":"view","p":"page","l":"ja"} のような短い JSON。
+// sendBeacon は Content-Type が text/plain なので、事前確認（OPTIONS）なしで届く。決まった値以外は数えない。
+const HIT_KINDS = new Set(["view", "click"]);
+const HIT_PLACES = new Set(["page", "hero", "article"]);
+const HIT_LANGS = new Set(["ja", "en"]);
+const JST = 9 * 3600_000;
+
+export async function hit(request, env, now = Date.now()) {
+  const origin = request.headers.get("Origin") || "";
+  if (!settings(env).origins.includes(origin)) return new Response(null, { status: 403 });
+  const h = cors(origin);
+  const text = await request.text();
+  if (text.length > 200) return new Response(null, { status: 413, headers: h });
+  let b;
+  try { b = JSON.parse(text); } catch { return new Response(null, { status: 400, headers: h }); }
+  if (!b || !HIT_KINDS.has(b.k) || !HIT_PLACES.has(b.p) || !HIT_LANGS.has(b.l)) return new Response(null, { status: 400, headers: h });
+  const day = iso(now + JST).slice(0, 10);
+  await env.DB.prepare(
+    "INSERT INTO hits (day, kind, place, lang, n) VALUES (?, ?, ?, ?, 1) ON CONFLICT (day, kind, place, lang) DO UPDATE SET n = n + 1"
+  ).bind(day, b.k, b.p, b.l).run();
+  return new Response(null, { status: 204, headers: h });
+}
+
 // ------------------------------------------------------------ 入口
 
 export default {
@@ -461,6 +487,13 @@ export default {
           return settings(env).origins.includes(origin) ? new Response(null, { status: 204, headers: cors(origin) }) : new Response(null, { status: 403 });
         }
         if (request.method === "POST") return await subscribe(request, env);
+      }
+      if (url.pathname === "/hit") {
+        const origin = request.headers.get("Origin") || "";
+        if (request.method === "OPTIONS") {
+          return settings(env).origins.includes(origin) ? new Response(null, { status: 204, headers: cors(origin) }) : new Response(null, { status: 403 });
+        }
+        if (request.method === "POST") return await hit(request, env);
       }
       if (url.pathname === "/confirm" && request.method === "GET") return await confirm(request, env);
       if (url.pathname === "/unsubscribe" && (request.method === "GET" || request.method === "POST")) return await unsubscribe(request, env);

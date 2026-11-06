@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import worker, { subscribe, confirm, unsubscribe, download, downloadLink, runScheduled, unsubToken, maskEmail, DOWNLOAD_TTL, DOWNLOAD_LIMIT, redactTokens, CONSENT, STEPS, CONFIRM_TTL, KEEP_AFTER } from "../src/worker.js";
+import worker, { hit, subscribe, confirm, unsubscribe, download, downloadLink, runScheduled, unsubToken, maskEmail, DOWNLOAD_TTL, DOWNLOAD_LIMIT, redactTokens, CONSENT, STEPS, CONFIRM_TTL, KEEP_AFTER } from "../src/worker.js";
 import { renderEmail, NEWS } from "../src/emails.js";
 
 const SCHEMA = readFileSync(new URL("../schema.sql", import.meta.url), "utf8");
@@ -491,4 +491,33 @@ test("news mail HTML keeps line breaks, escapes text and has a download button",
   assert.match(renderEmail("news", "ja", { ...v, sourceUrl: "https://github.com/infosat2000/preflight" }).text, /preflight\/blob\/main\/CHANGELOG\.md/);
   assert.match(renderEmail("news", "en", v).html, /&quot;BB-Preflight 2&quot;/);
   assert.throws(() => renderEmail("news", "ja", { ...v, newsId: "9.9.9" }));
+});
+
+test("hit counts views and clicks per day, place and language, and nothing about the visitor", async () => {
+  const { env } = setup();
+  const post = (body, origin = "https://blackboxblast.com", t = T0) =>
+    hit(new Request("https://signup.example.dev/hit", { method: "POST", headers: { Origin: origin, "Content-Type": "text/plain", "CF-Connecting-IP": "203.0.113.9" }, body }), env, t);
+  assert.equal((await post('{"k":"view","p":"page","l":"ja"}')).status, 204);
+  assert.equal((await post('{"k":"view","p":"page","l":"ja"}')).status, 204);
+  assert.equal((await post('{"k":"click","p":"hero","l":"en"}', undefined, T0 + 15 * 3600_000)).status, 204); // 翌日（日本時間）
+  assert.equal((await post('{"k":"view","p":"page","l":"ja"}', "https://evil.example")).status, 403);
+  assert.equal((await post('{"k":"buy","p":"page","l":"ja"}')).status, 400);
+  assert.equal((await post('{"k":"view","p":"page","l":"fr"}')).status, 400);
+  assert.equal((await post("not json")).status, 400);
+  assert.equal((await post("x".repeat(500))).status, 413);
+  const rows = env.DB.raw.prepare("SELECT * FROM hits ORDER BY day, kind").all();
+  assert.deepEqual(rows.map((r) => ({ ...r })), [
+    { day: "2026-10-13", kind: "view", place: "page", lang: "ja", n: 2 },
+    { day: "2026-10-14", kind: "click", place: "hero", lang: "en", n: 1 },
+  ]);
+  assert.ok(!JSON.stringify(rows).includes("203.0.113.9"));
+});
+
+test("hit answers the preflight check only for allowed origins", async () => {
+  const { env } = setup();
+  const opt = (origin) => worker.fetch(new Request("https://signup.example.dev/hit", { method: "OPTIONS", headers: { Origin: origin } }), env);
+  const ok = await opt("https://blackboxblast.com");
+  assert.equal(ok.status, 204);
+  assert.equal(ok.headers.get("Access-Control-Allow-Origin"), "https://blackboxblast.com");
+  assert.equal((await opt("https://evil.example")).status, 403);
 });
