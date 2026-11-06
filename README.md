@@ -65,6 +65,16 @@ git clone <このリポジトリ> preflight && cd preflight
 | `diff.md`（評価エンジンあり） | 構成図どうしの差分（2 回目以降） |
 | `facts.json` | 実測の生データ |
 
+### Claude Code から使う
+
+Claude Code などのAIエージェントに「この Mac を点検して」と頼めるスキルがあります（[skills/bb-preflight/SKILL.md](skills/bb-preflight/SKILL.md)）。
+
+```bash
+npx skills add infosat2000/preflight
+```
+
+入れると、AIが点検を回し、結果をふつうの言葉で説明します。直すときは1件ずつ、手順を見せてから、こちらの OK を待って進めます。鍵の値は画面に出さず、結果を外に送ることもありません。スキルを使わずに、このリポジトリの [SKILL.md](skills/bb-preflight/SKILL.md) を `~/.claude/skills/bb-preflight/` に置いても同じように使えます。
+
 ### 個人データの置き場所
 
 台帳・構成図・レポートは**自分の弱点の地図**なので、コードとは別の `~/.bb-preflight/`（権限 700）に置きます。
