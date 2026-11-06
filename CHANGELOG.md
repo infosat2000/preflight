@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### 追加
+- Claude Code などのAIエージェント向けスキル `skills/bb-preflight/SKILL.md`。「この Mac を点検して」で点検を回し、結果を説明し、1件ずつ OK をもらって直す。`npx skills add infosat2000/preflight` で入る。
+- 受け口の申し込みの流れを週ごとに数える `signup/funnel.sh`（読むだけ。件数だけを出す）。
+
 ## [1.3.0] - 2026-11-06
 
 AI のペンテスト道具 Strix を使う人が増えたので、その結果と、入れたことで増える危なさを読む。Strix 自体は動かさない（読み取り専用・外部への通信なしの約束はそのまま）。

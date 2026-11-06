@@ -211,5 +211,17 @@ class NextStepTest(unittest.TestCase):
             self.assertNotRegex(v["en"], JP, v["en"])
 
 
+
+class SkillTest(unittest.TestCase):
+    def test_skill_frontmatter(self):
+        fp = os.path.join(ROOT, "skills", "bb-preflight", "SKILL.md")
+        with open(fp, encoding="utf-8") as f:
+            text = f.read()
+        m = re.match(r"---\nname: ([a-z0-9-]+)\ndescription: (.+?)\n---\n", text, re.S)
+        self.assertTrue(m)
+        self.assertEqual(m.group(1), "bb-preflight")
+        self.assertLess(len(m.group(2)), 1024)
+
+
 if __name__ == "__main__":
     unittest.main()
