@@ -106,6 +106,39 @@ const T = {
 
 // 新しい版のお知らせ。notBefore より後に R2 の zip が置き換わるまでは送らない（古い zip を配らないように）
 export const NEWS = {
+  "1.3.0": {
+    notBefore: "2026-11-06T04:34:18Z", // 1.3.0 を main に入れた時刻
+    ja: {
+      subject: "BB Preflight 1.3.0 を出しました（AI のペンテスト Strix に対応）",
+      body: (v) => [
+        "BB Preflight を 1.3.0 にしました。",
+        "AI で作ったアプリやフォームの「穴」を、AI に探してもらう道具が広まっています。代表が、無料公開の Strix です。1.3.0 では、Strix を使う人と、これから使ってみたい人の両方に役立つ点検を足しました。",
+        "新しく見ること:\n・Strix の結果: 重い指摘が残っていないか。指摘が0件でも、予算の上限などで途中で止まっていないか（0件は「安全」という意味ではありません）\n・Strix の作業手順（スキル）が、どのフォルダからでも使える場所に入っていないか\n・Strix の設定ファイルや、OpenAI・OpenRouter の鍵が、ファイルにそのまま書かれていないか",
+        "公開しているサイトを台帳に書いていて、まだ Strix を使っていない方には、レポートの「次の一歩（やるかどうかは自由）」に、安全な始め方の案内を出します。自分のアプリだけを、複製で、短いモードと予算の上限をつけて試す手順と、Claude Code に貼れる依頼文です。",
+        "BB Preflight 自身が Strix を動かすことはありません。これまでどおり読むだけで、何も変えず、結果をどこかに送ることもありません。",
+        "1.3.0 は、ここから受け取れます。あなた専用のリンクで、7日間、5回まで使えます。",
+        v.downloadUrl,
+        "入れ替え方:\n1. 受け取った zip を開くと、BB-Preflight フォルダができます。\n2. 前の版の BB-Preflight フォルダをゴミ箱に入れ、新しいフォルダを同じ場所に置きます。名前が「BB-Preflight 2」になっていたら、「BB-Preflight」に直してください。\n3. いつもどおり BB Preflight を開きます。台帳と前回の結果はそのまま残るので、書き直す必要はありません。",
+        `リンクの期限が切れたら、リンクを開くと新しいリンクを受け取れます。紹介ページで同じメールアドレスを入れ直しても届きます: ${v.siteBase}/ja/preflight/`,
+        ...(v.sourceUrl ? [`Strix の安全な始め方: ${v.sourceUrl}/blob/main/docs/strix-guide.md`, `変更の記録（CHANGELOG）: ${v.sourceUrl}/blob/main/CHANGELOG.md`] : []),
+      ],
+    },
+    en: {
+      subject: "BB Preflight 1.3.0 is out (now reads AI pentest results from Strix)",
+      body: (v) => [
+        "BB Preflight 1.3.0 is out.",
+        "Tools that use AI to find holes in the apps and forms you build are catching on. The best known is Strix, which is free and open source. 1.3.0 adds checks for people who already use Strix and for those who'd like to try it.",
+        "What's new:\n- Strix results: whether serious findings are still open, and whether a scan stopped early, for example at its budget cap, even with zero findings (zero does not mean safe)\n- Whether Strix's skills (its instructions for AI agents) are installed where they work from any folder\n- Whether the Strix config file, or OpenAI and OpenRouter keys, are written into plain files",
+        "If your list includes public sites and you haven't used Strix yet, the report now has an optional \"Next steps\" section with a guide to starting safely: test only your own app, on a copy, in quick mode with a budget cap, plus a request you can paste into Claude Code.",
+        "BB Preflight never runs Strix itself. As before, it only reads. It changes nothing and sends your results nowhere.",
+        "Get 1.3.0 here. The link is just for you and works 5 times within 7 days.",
+        v.downloadUrl,
+        "To swap in the new version:\n1. Open the zip. You'll get a BB-Preflight folder.\n2. Move your old BB-Preflight folder to the Trash and put the new one in the same place. If it's called \"BB-Preflight 2\", rename it to \"BB-Preflight\".\n3. Open BB Preflight as usual. Your list and your last results stay where they are, so there's nothing to redo.",
+        `If the link expires, open it and you can ask for a new one. You can also enter the same email on the BB Preflight page again: ${v.siteBase}/en/preflight/`,
+        ...(v.sourceUrl ? [`Starting Strix safely: ${v.sourceUrl}/blob/main/docs/strix-guide.md`, `What changed (CHANGELOG): ${v.sourceUrl}/blob/main/CHANGELOG.md`] : []),
+      ],
+    },
+  },
   "1.2.0": {
     notBefore: "2026-10-21T02:41:25Z", // 1.2.0 を main に入れた時刻
     ja: {
