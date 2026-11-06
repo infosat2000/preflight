@@ -4,7 +4,7 @@
 #                      WEEKS=12 ./funnel.sh   直近12週
 #                      EXCLUDE="me@example.com,test@example.com" ./funnel.sh   自分の試験用アドレスを数えない
 # 出すのは件数だけ。メールアドレスは表示しない。
-# 紹介ページの閲覧数は Cloudflare Web Analytics（BB の Pages の設定）で見る。ここでは数えられない。
+# BB の案内と紹介ページの「見えた」「押された」は hits 表から週ごとに出す（件数だけ。誰が見たかは残していない）。
 set -eu
 cd "$(dirname "$0")"
 weeks="${WEEKS:-8}"
@@ -38,4 +38,23 @@ for r in rows:
     print("  ".join("%-9s" % (r.get(c) or 0) for c in cols))
 if not rows:
     print("（この期間の記録はありません）")
+'
+
+hits="SELECT strftime('%Y-W%W', day) AS week,
+  SUM(CASE WHEN kind='view' AND place IN ('hero','article') THEN n ELSE 0 END) AS promo_view,
+  SUM(CASE WHEN kind='click' AND place IN ('hero','article') THEN n ELSE 0 END) AS promo_click,
+  SUM(CASE WHEN kind='view' AND place='page' THEN n ELSE 0 END) AS page_view
+FROM hits WHERE day >= date('now', '-$((weeks * 7)) days') GROUP BY week ORDER BY week"
+echo
+echo "BB の案内と紹介ページ（自分の閲覧も含む）"
+npx wrangler d1 execute preflight-signup --remote --json --command "$hits" 2>/dev/null | python3 -c '
+import json, sys
+rows = json.load(sys.stdin)[0]["results"]
+cols = ["week", "promo_view", "promo_click", "page_view"]
+head = ["週", "案内が見えた", "案内が押された", "紹介ページ"]
+print("  ".join("%-9s" % h for h in head))
+for r in rows:
+    print("  ".join("%-9s" % (r.get(c) or 0) for c in cols))
+if not rows:
+    print("（まだ記録はありません）")
 '
