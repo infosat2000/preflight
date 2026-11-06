@@ -190,6 +190,10 @@ SECRET_PATTERNS = [
     ("aws", r"AKIA[0-9A-Z]{16}"),
     ("groq", r"gsk_[A-Za-z0-9]{30,}"),
     ("npm", r"npm_[A-Za-z0-9]{36}"),
+    # OpenAI はプロジェクト用（sk-proj-）・サービス用・管理用と、旧形式（途中に T3BlbkFJ を含む 48 文字）。
+    # AI のペンテスト道具（Strix など）を試す人が、中で動く AI にまず使う鍵（1.3.0）
+    ("openai", r"sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{40,}|sk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}"),
+    ("openrouter", r"sk-or-v1-[a-f0-9]{64}"),
     # 見出しの行だけでは数えない（プログラムや説明文に書かれた見出しを鍵と見間違えないように）。
     # 見出しの後に、鍵の本文（base64 の長い行）が続くものだけを鍵とみなす。見出しは分けて書く（このファイル自身が引っかからないように）。
     ("private_key", r"-----BEGIN [A-Z ]*" + "PRIVATE KEY-----" + r"\r?\n(?:[A-Za-z-]+: [^\n]*\r?\n)*\r?\n?[A-Za-z0-9+/=]{40,}"),
@@ -569,6 +573,7 @@ def main():
         ("openToRun", "開くだけで動く仕掛け", lambda: collect_extra.open_to_run(roots, SKIP_DIRS, SCAN_DEPTH)),
         ("aiKeys", "AI ツールの鍵と版", collect_extra.ai_keys),
         ("extensions", "ブラウザの拡張機能", collect_extra.browser_extensions),
+        ("strix", "AI のペンテスト（Strix）の結果", lambda: collect_extra.strix_status(roots, SKIP_DIRS, SCAN_DEPTH)),
     ]
     facts = {"measuredAt": datetime.datetime.now().isoformat(timespec="seconds"),
              "iocUpdated": collect_extra.load_ioc().get("updated", ""),

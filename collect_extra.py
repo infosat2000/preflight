@@ -599,6 +599,9 @@ CRED_FILES = [
     (".config/github-copilot/apps.json", "copilot", None),
     (".config/github-copilot/hosts.json", "copilot", None),
     (".claude/.credentials.json", "claude", None),
+    # Strix（AI のペンテスト道具）。cli-config.json の env に LLM の鍵を平文で書く作り（1.3.0）
+    (".strix/cli-config.json", "strix", re.compile(r"\"[A-Z0-9_]*(KEY|TOKEN)\"\s*:\s*\"(?![$])[^\"]{8,}\"")),
+    (".strix/platform-auth.json", "strix-cloud", None),
 ]
 
 
@@ -845,6 +848,135 @@ def ai_cli_versions(ioc=None, found=None):
 
 def ai_keys():
     return {"credFiles": cred_files(), "mcp": mcp_inventory(), "cli": ai_cli_versions()}
+
+
+# --- AI のペンテスト（Strix）--------------------------------------------------
+# Strix は実際に攻撃を試す道具なので、Preflight は動かさない。入っているかと、残った結果を読むだけ（1.3.0）。
+# 結果の形は Strix の strix/report/{state,coverage}.py に合わせる: strix_runs/<run>/run.json・vulnerabilities.json・coverage.json
+
+STRIX_SKILLS = {"api-security-testing", "application-security-testing", "ci-security-scanning-with-strix",
+                "find-security-vulnerabilities-in-code", "fix-security-vulnerabilities-with-strix",
+                "managed-pentesting-with-strix", "owasp-top-10-testing", "penetration-testing-with-strix",
+                "web-app-penetration-testing"}
+SEVERITIES = ("critical", "high", "medium", "low", "info")
+STRIX_RUN_LIMIT = 200  # 1つの strix_runs に、これより多い回は読まない（古いものから捨てる）
+
+
+def load_json(fp, limit=20_000_000):
+    try:
+        if os.path.getsize(fp) > limit:
+            return None
+        with open(fp, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def strix_skills(dirs):
+    """Strix のスキル（AI エージェントに渡す作業手順）が置かれた場所。スキルの中身は読まない。"""
+    res = []
+    for d in dirs:
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            if n in STRIX_SKILLS and os.path.isfile(os.path.join(d, n, "SKILL.md")):
+                res.append(short(os.path.join(d, n)))
+    return res
+
+
+def strix_title(title):
+    """指摘の題名から、対象の場所（「… on https://…」など）を落とす。Strix 自身の一覧表示（strix/report/runs.py）と同じ切り方。"""
+    title = re.split(r" via | on | \(", str(title or ""))[0]
+    return re.sub(r"\s+", " ", re.sub(r"https?://\S+|\b[\w.-]+\.[a-z]{2,}(?::\d+)?/\S*", "", title)).strip()[:80]
+
+
+def strix_run(run_dir):
+    """1回分の結果。指摘の題名は重いものから3件まで。対象の URL や再現手順は記録しない。"""
+    rec = load_json(os.path.join(run_dir, "run.json"))
+    if not isinstance(rec, dict):
+        return None
+    vulns = load_json(os.path.join(run_dir, "vulnerabilities.json"))
+    vulns = [v for v in vulns if isinstance(v, dict)] if isinstance(vulns, list) else []
+    cov = load_json(os.path.join(run_dir, "coverage.json"))
+    cov = cov if isinstance(cov, dict) else {}
+    count = {s: 0 for s in SEVERITIES}
+    for v in vulns:
+        s = str(v.get("severity") or "").lower()
+        if s in count:
+            count[s] += 1
+    worst = sorted((v for v in vulns if str(v.get("severity") or "").lower() in ("critical", "high")),
+                   key=lambda v: SEVERITIES.index(str(v["severity"]).lower()))
+    comp = cov.get("completeness") if isinstance(cov.get("completeness"), dict) else {}
+    status = str(rec.get("status") or "unknown")
+    exit_reason = str(comp.get("exit_reason") or "")
+    complete = comp["complete"] if isinstance(comp.get("complete"), bool) else status == "completed"
+    summary = cov.get("summary") if isinstance(cov.get("summary"), dict) else {}
+    targets = rec.get("targets_info") if isinstance(rec.get("targets_info"), list) else []
+    return {
+        "dir": short(run_dir),
+        "status": status,
+        "complete": complete,
+        "budgetStop": "budget" in (exit_reason + " " + status).lower(),
+        "exitReason": exit_reason,
+        "scanMode": str(rec.get("scan_mode") or ""),
+        "endedAt": str(rec.get("end_time") or "")[:16],
+        "targets": len(targets),
+        "findings": count,
+        "worst": [x for x in (strix_title(v.get("title")) for v in worst[:3]) if x],
+        "coverage": bool(cov),
+        "surfaces": summary.get("surfaces_reviewed") if isinstance(summary.get("surfaces_reviewed"), int) else None,
+        "gaps": summary.get("gaps") if isinstance(summary.get("gaps"), int) else None,
+    }
+
+
+def strix_projects(runs_dirs):
+    """strix_runs ごとに、いちばん新しい回（run.json の更新時刻）を読む。"""
+    res = []
+    for rd in sorted(set(runs_dirs)):
+        try:
+            runs = [os.path.join(rd, n) for n in os.listdir(rd) if os.path.isfile(os.path.join(rd, n, "run.json"))]
+        except OSError:
+            continue
+        runs.sort(key=lambda p: os.path.getmtime(os.path.join(p, "run.json")), reverse=True)
+        runs = runs[:STRIX_RUN_LIMIT]
+        latest = next((r for r in (strix_run(p) for p in runs) if r), None)
+        if latest:
+            res.append({"dir": short(os.path.dirname(rd)), "runs": len(runs), "latest": latest})
+    return res
+
+
+def strix_status(roots=(), skip_dirs=(), depth=8, home=None):
+    """Strix が入っているか・スキルの置き場所・残った結果。どれもなければ None（レポートに項目を出さない）。"""
+    home = home or HOME
+    global_dirs = [os.path.join(home, ".claude", "skills"), os.path.join(home, ".agents", "skills")]
+    runs_dirs, project_skill_dirs = [], []
+    if os.path.isdir(os.path.join(home, "strix_runs")):
+        runs_dirs.append(os.path.join(home, "strix_runs"))
+    for root in roots:
+        root = os.path.expanduser(root)
+        for dp, dns, _ in os.walk(root):
+            if dp[len(root):].count(os.sep) >= depth:
+                dns[:] = []
+            if "strix_runs" in dns:
+                runs_dirs.append(os.path.join(dp, "strix_runs"))
+                dns.remove("strix_runs")
+            for hidden in (".claude", ".agents"):
+                sk = os.path.join(dp, hidden, "skills")
+                if hidden in dns and os.path.isdir(sk) and sk not in global_dirs:
+                    project_skill_dirs.append(sk)
+            dns[:] = [d for d in dns if d not in skip_dirs]
+    res = {
+        "installed": bool(which("strix")),
+        "config": os.path.isdir(os.path.join(home, ".strix")),
+        "globalSkills": strix_skills(global_dirs),
+        "projectSkills": strix_skills(sorted(set(project_skill_dirs))),
+        "projects": strix_projects(runs_dirs),
+    }
+    if not (res["installed"] or res["config"] or res["globalSkills"] or res["projectSkills"] or res["projects"]):
+        return None
+    return res
 
 
 # --- ブラウザの拡張機能 ---------------------------------------------------------

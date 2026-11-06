@@ -136,6 +136,9 @@ h2 .eyebrow{color:var(--accent-ink)}
 .task header > *{min-width:0}
 .pill{flex:none;font:700 11px/1 var(--mono);letter-spacing:.08em;border-radius:999px;padding:6px 10px;margin-top:2px}
 .pill.red{background:var(--red-dim);color:var(--red)} .pill.yellow{background:var(--amber-dim);color:var(--amber)}
+.pill.next{background:transparent;color:var(--link);border:1px solid var(--link)}
+.sub{color:var(--muted);margin:-4px 0 14px;font-size:14px}
+.task .more{display:inline-block;margin-top:12px;color:var(--link);font-weight:600;overflow-wrap:anywhere}
 .task h3{margin:0;font-size:16.5px;line-height:1.55;color:var(--ink-strong);text-wrap:balance;overflow-wrap:anywhere}
 .task dl{display:grid;grid-template-columns:8em minmax(0,1fr);gap:6px 14px;margin:14px 0 0}
 .task dt{font-size:12.5px;color:var(--muted);padding-top:2px}
@@ -307,6 +310,12 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     <div class="panel" id="diff"></div>
   </section>
 
+  <section id="next-sec" hidden>
+    <h2><span class="eyebrow">Next</span><span data-i18n="s_next"></span></h2>
+    <p class="sub" data-i18n="next_hint"></p>
+    <div class="tasks" id="next"></div>
+  </section>
+
   <section id="ok-sec">
     <h2><span class="eyebrow">Clear</span><span data-i18n="s_ok"></span></h2>
     <div class="panel"><ul class="list ok" id="ok"></ul></div>
@@ -356,7 +365,8 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       to_detail: "専門家向けの詳しい情報を見る ↓", hint: "項目を押すと、その説明に移動します。",
       s_todo: "やること", s_diff: "前回の点検から変わったこと", s_ok: "確認できて、問題なかったこと",
       s_limits: "この点検で分からないこと", s_detail: "詳しい情報（専門家向け）", detail_open: "詳しい情報をひらく",
-      what: "何が起きているか", why: "放っておくと", how: "直し方", p_red: "今すぐ直す", p_yellow: "確認しておく",
+      what: "何が起きているか", why: "放っておくと", how: "直し方", p_red: "今すぐ直す", p_yellow: "確認しておく", p_next: "おすすめ",
+      s_next: "次の一歩（やるかどうかは自由）", next_hint: "このMacの問題ではありません。使っている人に役立ちそうな、守りの次の一歩です。", more: "詳しい説明を読む →", n_what: "どんなものか", n_why: "なぜ役立つか", n_how: "始め方", n_keep: "急がなくてよい場合",
       e_self: "自分でできる", e_help: "詳しい人か AI に頼むと安心", e_time: "目安 ", undo: "元に戻すには", keep: "このままでよい場合",
       ai_title: "AI に頼む", ai_hint: "Claude Code などにそのまま貼れる依頼文です。鍵の値やファイルの中身は入っていません。",
       credit: "評価エンジン: CyberRiskScape（Apache License 2.0）",
@@ -392,7 +402,8 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       to_detail: "See the technical details ↓", hint: "Tap an item to jump to its explanation.",
       s_todo: "What to do", s_diff: "Changes since the last check", s_ok: "Checked and fine",
       s_limits: "What this check can't tell you", s_detail: "Technical details (for experts)", detail_open: "Open the technical details",
-      what: "What's happening", why: "If you leave it", how: "How to fix it", p_red: "Fix now", p_yellow: "Check",
+      what: "What's happening", why: "If you leave it", how: "How to fix it", p_red: "Fix now", p_yellow: "Check", p_next: "Suggested",
+      s_next: "Next steps (optional)", next_hint: "Not a problem with this Mac. These are next steps for your protection that may be useful to you.", more: "Read the full guide →", n_what: "What it is", n_why: "Why it helps", n_how: "How to start", n_keep: "When there's no rush",
       e_self: "You can do this", e_help: "Best done with an expert or an AI", e_time: "Takes ", undo: "To undo", keep: "When it's fine to leave",
       ai_title: "Ask an AI", ai_hint: "A request you can paste straight into Claude Code or similar. It contains no key values or file contents.",
       credit: "Evaluation engine: CyberRiskScape (Apache License 2.0)",
@@ -579,11 +590,21 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
     // tasks (one card per finding; the first card of each category is the jump target)
     var tasks = $("tasks"); tasks.textContent = "";
     $("todo-sec").hidden = !D.todo.length;
-    D.todo.forEach(function (f, i) {
-      var card = el("article", "task"); card.setAttribute("data-cat", f.cat); card.tabIndex = -1;
+    D.todo.forEach(function (f, i) { tasks.appendChild(taskCard(f, i, U)); });
+    var next = $("next"); next.textContent = "";
+    $("next-sec").hidden = !(D.next && D.next.length);
+    (D.next || []).forEach(function (f, i) { next.appendChild(taskCard(f, i, U)); });
+
+    renderMap(U);
+    renderDiagram(U);
+    renderRest(U);
+  }
+
+  function taskCard(f, i, U) {
+      var card = el("article", "task"); if (f.level !== "next") card.setAttribute("data-cat", f.cat); card.tabIndex = -1;
       card.style.animationDelay = (reduce ? 0 : 0.2 + i * 0.08) + "s";
       var h = el("header");
-      h.appendChild(el("span", "pill " + f.level, f.level === "red" ? U.p_red : U.p_yellow));
+      h.appendChild(el("span", "pill " + f.level, f.level === "red" ? U.p_red : f.level === "next" ? U.p_next : U.p_yellow));
       h.appendChild(el("h3", null, tx(f.title, lang)));
       card.appendChild(h);
       if (f.effort) {
@@ -594,22 +615,23 @@ footer .mark b{color:var(--ink-strong);font-weight:700}
       }
       var dl = el("dl");
       function row(label, node) { dl.appendChild(el("dt", null, label)); dl.appendChild(node); }
-      row(U.what, el("dd", null, tx(f.what, lang)));
-      row(U.why, el("dd", null, tx(f.why, lang)));
+      var nx = f.level === "next";
+      row(nx ? U.n_what : U.what, el("dd", null, tx(f.what, lang)));
+      row(nx ? U.n_why : U.why, el("dd", null, tx(f.why, lang)));
       if (f.steps && f.steps.length) {
         var dd = el("dd"), ol = el("ol", "steps");
         f.steps.forEach(function (s) { ol.appendChild(el("li", null, tx(s, lang))); });
-        dd.appendChild(ol); row(U.how, dd);
-      } else row(U.how, el("dd", "fix", tx(f.how, lang)));
+        dd.appendChild(ol); row(nx ? U.n_how : U.how, dd);
+      } else row(nx ? U.n_how : U.how, el("dd", "fix", tx(f.how, lang)));
       if (f.undo) row(U.undo, el("dd", "note", tx(f.undo, lang)));
-      if (f.keep) row(U.keep, el("dd", "note", tx(f.keep, lang)));
+      if (f.keep) row(nx ? U.n_keep : U.keep, el("dd", "note", tx(f.keep, lang)));
       card.appendChild(dl);
       if (f.askAi) card.appendChild(askBox(tx(f.askAi, lang), U));
-      tasks.appendChild(card);
-    });
+      if (f.link) { var a = el("a", "more", U.more); a.href = f.link; a.target = "_blank"; a.rel = "noopener"; card.appendChild(a); }
+      return card;
+  }
 
-    renderMap(U);
-    renderDiagram(U);
+  function renderRest(U) {
 
     // ok list
     var ok = $("ok"); ok.textContent = "";
