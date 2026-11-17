@@ -195,13 +195,24 @@ class NextStepTest(unittest.TestCase):
         f = base_facts()
         self.assertTrue(f.get("urls"))
         d = easy_report.build_data(f)
-        self.assertEqual([x["level"] for x in d["next"]], ["next"])
+        strix = lambda dd: [x for x in dd["next"] if x["cat"] == "strix"]
+        self.assertEqual([x["level"] for x in d["next"]], ["next", "next"])
+        self.assertEqual([x["cat"] for x in d["next"]], ["strix", "appcode"])
         self.assertEqual(d["counts"]["yellow"] + d["counts"]["red"], len(d["todo"]))   # not counted as a problem
         self.assertTrue(os.path.isfile(os.path.join(ROOT, "docs", "strix-guide.md")))
         self.assertTrue(d["next"][0]["link"].endswith("/docs/strix-guide.md"))
-        self.assertEqual(easy_report.build_data(strix_facts("good"))["next"], [])     # already has results
+        self.assertEqual(strix(easy_report.build_data(strix_facts("good"))), [])      # already has results
         f["urls"] = []
         self.assertEqual(easy_report.build_data(f)["next"], [])                        # no public site: nothing to test
+
+    def test_appcode_request_is_bilingual_and_not_counted(self):
+        f = base_facts()
+        d = easy_report.build_data(f)
+        x = [n for n in d["next"] if n["cat"] == "appcode"][0]
+        for v in [x["title"], x["what"], x["why"], x["how"], x["time"], x["keep"], x["askAi"]] + x["steps"]:
+            self.assertEqual(set(v), {"ja", "en"})
+            self.assertNotRegex(v["en"], JP, v["en"])
+        self.assertEqual(d["counts"]["yellow"] + d["counts"]["red"], len(d["todo"]))
 
     def test_next_step_is_bilingual(self):
         x = easy_report.build_data(base_facts())["next"][0]

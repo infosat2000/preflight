@@ -1619,6 +1619,45 @@ def next_steps(facts):
                        "Show me each command and ask me before installing or running anything. Never point it at a live site or other folders, "
                        "and never show keys on screen or write them to files." % STRIX_GUIDE),
         })
+    if facts.get("urls"):
+        res.append({
+            "cat": "appcode", "level": "next", "effort": HELP,
+            "title": t("自分のアプリのコードを、AI に読んで点検してもらう（任意）", "Have an AI read your own app's code for common mistakes (optional)"),
+            "what": t("この点検は Mac の戸締まりを見るもので、自分で作ったアプリのコードの中身は読んでいません。公開しているサイトがあるなら、"
+                      "コードを AI に読ませて、次の3つの型の書き間違いがないかを調べてもらえます。測った結果ではなく、あくまで見直しの依頼です。",
+                      "This check looks at how your Mac is locked down. It does not read the code inside apps you built. If you run public sites, "
+                      "you can ask an AI to read the code for three kinds of common mistakes. It is a request to review, not a measured result."),
+            "why": t("画面の上では普通に動くので、書き間違いに気づけません。"
+                     "1. 他人のデータが見えてしまう（IDを変えると他人の予約が見える、データベースの行ごとの制限がない）。"
+                     "2. 入力欄やURLからの攻撃（SQL・画面・コマンド・ファイルの場所・外部への通信などに、入力をそのまま渡している）。"
+                     "3. AI の出力の扱い（AI が返した文字を、確かめずに SQL・画面・コマンドへそのまま渡している）。",
+                     "Nothing looks wrong on screen, so these mistakes go unnoticed. "
+                     "1. Other people's data becomes visible (changing an ID shows someone else's booking, or the database has no per-row limits). "
+                     "2. Attacks through input fields and URLs (input goes straight into SQL, a page, a command, a file path or an outgoing request). "
+                     "3. Handling of AI output (text the AI returned goes straight into SQL, a page or a command without checks)."),
+            "how": t("自分のアプリの複製を AI に読ませ、上の3つの型ごとに、危ない書き方の箇所を一覧にしてもらいます。直す前に、必ず案を見せてもらいます。",
+                     "Let an AI read a copy of your app and list, for each of the three kinds above, the places that are written in a risky way. "
+                     "Ask it to show you its proposed fix before changing anything."),
+            "steps": [
+                t("アプリのフォルダを、別の場所に複製します。本番の鍵やデータは置きません", "Copy the app folder somewhere else. Don't keep production keys or data in it"),
+                t("下の依頼文を AI に渡し、3つの型ごとの一覧を出してもらいます", "Give the request below to an AI and ask for a list for each of the three kinds"),
+                t("一覧のうち、本当に起きうるものだけを選び、直す案を見せてもらってから直します", "Pick only the items that can really happen, and have the AI show its fix before it edits"),
+            ],
+            "time": t("約1時間", "About 1 hour"),
+            "keep": t("自分しか使わないもの、他人の情報を扱わないもの、まだ公開していないものなら、急ぐ必要はありません",
+                      "No rush if it's only for you, doesn't handle other people's data, or isn't public yet"),
+            "askAi": t("自分で作ったアプリのコードを、次の3つの型で見直してください。(1) 他人のデータが見える書き方（ID を変えるだけで他人の情報が取れる、"
+                       "データベースの行ごとの制限がない）。(2) 入力欄や URL からの攻撃（SQL・画面・コマンド・ファイルの場所・外部への通信に、入力をそのまま渡している）。"
+                       "(3) AI の出力を確かめずに SQL・画面・コマンドへ渡している書き方。"
+                       "まず、型ごとに危ない箇所を、ファイル名と行つきで一覧にしてください。本当に起きうるかも、ふつうの言葉で添えてください。"
+                       "コードは、直す案を見せて私が確かめるまで書き換えないでください。本番のサイトやデータには向けず、鍵は画面やファイルに出さないでください。",
+                       "Please review the code of an app I built for three kinds of mistakes. (1) Code that exposes other people's data (changing an ID "
+                       "is enough to read someone else's data, or the database has no per-row limits). (2) Attacks through input fields and URLs "
+                       "(input goes straight into SQL, a page, a command, a file path or an outgoing request). (3) Code that passes AI output "
+                       "into SQL, a page or a command without checks. First list the risky places for each kind, with file names and line numbers, "
+                       "and say in plain words whether each could really happen. Don't edit any code until I've approved your proposed fix. "
+                       "Don't point this at a live site or live data, and never show keys on screen or write them to files."),
+        })
     nm = [m for m in ((facts.get("aiKeys") or {}).get("mcp") or []) if m.get("authHeader") is False]
     if nm:
         names = join([same("%s（%s）" % (m["name"], m["app"])) for m in nm])
