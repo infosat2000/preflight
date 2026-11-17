@@ -689,9 +689,9 @@ def more_findings(facts, todo, good):
                 t("読み込んだ Web ページやファイルに悪い指示が仕込まれていると（プロンプトインジェクション）、AI がファイルを消したり鍵を外へ送ったりしても止められません。",
                   "If a web page or file the AI reads contains hidden instructions (prompt injection), nothing stops the AI from deleting files "
                   "or sending your keys out."),
-                t("Claude Code で /permissions を開いて、広すぎる許可を消します。設定ファイルの \"defaultMode\": \"bypassPermissions\" は消すか \"default\" にします。",
+                t("Claude Code で /permissions を開いて、広すぎる許可を消します。設定ファイルの \"defaultMode\": \"bypassPermissions\" は消すか \"default\" にします。あわせて /sandbox でサンドボックスを有効にすると、被害を狭められます。",
                   "Open /permissions in Claude Code and remove the overly broad rules. In the settings file, remove "
-                  "\"defaultMode\": \"bypassPermissions\" or set it to \"default\"."),
+                  "\"defaultMode\": \"bypassPermissions\" or set it to \"default\". Turning on the sandbox (/sandbox) also limits the damage."),
                 time=t("約10分", "About 10 min"),
                 undo=t("消した許可は、/permissions からいつでも足し直せます", "You can add a rule back at any time from /permissions"),
                 ask_ai=t("Claude Code の設定（%s）に、確認なしで何でも実行できる許可が入っています。私がふだん使う作業に必要な許可だけを、"
@@ -1357,8 +1357,8 @@ def repo_findings(r, todo, good):
                      "BB Preflight found settings that run things when a folder opens: %s. Without running anything, explain what each one runs, "
                      "and use git history to find when and by whom it was added. Don't change anything yet." % ", ".join(x[0] for x in yellow))))
     if not red and not yellow:
-        good("repo", t("走査範囲のプロジェクトに、開くだけで動く仕掛けや、AI への見えない指示はありませんでした。",
-                       "No open-to-run traps or hidden AI instructions were found in the projects we checked."))
+        good("repo", t("走査範囲のプロジェクトと AI のメモリ・指示ファイルに、開くだけで動く仕掛けや、AI への見えない指示はありませんでした。",
+                       "No open-to-run traps or hidden AI instructions were found in the projects we checked, or in your AI memory and instruction files."))
 
 
 CRED_NAME = {"git": "Git", "npm": "npm", "gh": "GitHub CLI", "docker": "Docker", "netrc": ".netrc", "pypi": "PyPI",
@@ -1383,7 +1383,7 @@ PLAIN_FIX = {
 
 
 def aikeys_findings(k, todo, good):
-    if not k or not any(k.get(x) for x in ("credFiles", "mcp", "cli")):
+    if not k or not any(k.get(x) for x in ("credFiles", "mcp", "cli", "sandbox")):
         return
     creds = k.get("credFiles") or []
     # 鍵を入れるための置き場所（plain が None）か、平文の鍵が見つかったものだけ。鍵の無い設定ファイルは読めても困らない
@@ -1440,6 +1440,44 @@ def aikeys_findings(k, todo, good):
             t("その MCP の URL を https に変えます。https に対応していないサーバーは使わないようにします。",
               "Change that MCP server's URL to https. Stop using servers that don't support https."),
             SELF, time=t("約5分", "About 5 min")))
+    sb = k.get("sandbox") or []
+    sb_red = [x for x in sb if "neverAsk" in x["kinds"]]
+    sb_yel = [x for x in sb if "neverAsk" not in x["kinds"] and "dangerFull" in x["kinds"]]
+    sb_wide = [x for x in sb if "wideRoots" in x["kinds"]]
+    if sb_red:
+        where = join([same(x["file"]) for x in sb_red])
+        todo.append(finding(
+            "aikeys", RED, t("Codex が、囲いも確認もなしで何でも実行できる設定です", "Codex can run anything with no sandbox and no confirmation"),
+            cat_text(t("Codex の設定で、サンドボックス（作業範囲の囲い）を外し（danger-full-access）、確認も省く（approval_policy = never）指定があります: ",
+                       "Codex is set to turn off the sandbox (danger-full-access) and skip confirmations (approval_policy = never): "), where),
+            t("読み込んだ Web ページやファイルに悪い指示が仕込まれていると（プロンプトインジェクション）、AI がファイルを消したり鍵を外へ送ったりしても、囲いも確認も止めてくれません。",
+              "If a web page or file the AI reads contains hidden instructions (prompt injection), neither a sandbox nor a confirmation will stop it "
+              "from deleting files or sending your keys out."),
+            t("設定ファイルで sandbox_mode を workspace-write に、approval_policy を on-request に戻します。",
+              "In the settings file, set sandbox_mode back to workspace-write and approval_policy to on-request."),
+            SELF, time=t("約5分", "About 5 min"),
+            undo=t("書き換える前の値を控えておけば、いつでも戻せます", "Note the old values first and you can restore them any time"),
+            ask_ai=t("Codex の設定（%s）で、サンドボックスを外し、確認も省く指定になっています。作業に必要な範囲だけを許す設定の案を出してください。"
+                     "書き換える前に、変更の案を見せて私に確かめてください。" % where["ja"],
+                     "My Codex settings (%s) turn off the sandbox and skip confirmations. Propose a setup that allows only the folders I need. "
+                     "Show me the change before editing anything." % where["en"])))
+    if sb_yel or sb_wide:
+        parts = []
+        if sb_yel:
+            parts.append(cat_text(t("サンドボックスを外す指定（danger-full-access）: ", "sandbox turned off (danger-full-access): "), join([same(x["file"]) for x in sb_yel])))
+        if sb_wide:
+            parts.append(cat_text(t("書き込める場所がホーム全体など広すぎる指定: ", "writable folders that are too broad (such as your whole home folder): "),
+                                  join([same(x["file"]) for x in sb_wide])))
+        todo.append(finding(
+            "aikeys", YELLOW, t("Codex の囲いが、広く開いています", "Codex's sandbox is wide open"),
+            cat_text(t("Codex の設定に、次の指定があります。", "Your Codex settings have: "), join(parts) if len(parts) > 1 else parts[0], t("", ".")),
+            t("AI が悪い指示を読み込んだとき、作業フォルダの外のファイルまで書き換えられます。確認が入る設定なら、まだ止められます。",
+              "If the AI reads bad instructions, it can change files outside your work folder. If confirmations are still on, you can still stop it."),
+            t("sandbox_mode を workspace-write にし、writable_roots は作業用のフォルダだけにします。",
+              "Set sandbox_mode to workspace-write and limit writable_roots to your work folders."),
+            SELF, time=t("約5分", "About 5 min"),
+            keep=t("信頼できる作業だけに使い、そのつど確認している設定なら、すぐ危ないわけではありません",
+                   "If you only use it for trusted work and still confirm each step, it is not an urgent danger")))
     if old:
         rows = [(c["name"], t("%s（%s より前の版に既知の脆弱性 %s）" % (c["version"], c["fixed"], c["cve"]),
                               "%s (versions before %s have known flaw %s)" % (c["version"], c["fixed"], c["cve"]))) for c in old]
@@ -1452,7 +1490,7 @@ def aikeys_findings(k, todo, good):
               "Update that AI tool to the latest version (this is separate from macOS updates)."),
             SELF, time=t("約5分", "About 5 min"),
             keep=t("macOS の版は変わりません。AI ツールだけの更新です", "This doesn't change your macOS version. Only the AI tool is updated")))
-    if not (open_files or plain or mcp_keys or mcp_http or old):
+    if not (open_files or plain or mcp_keys or mcp_http or old or sb_red or sb_yel or sb_wide):
         unp = len([m for m in mcp if m.get("unpinned")])
         extra = t("（版を固定せずに毎回取ってくる MCP が %d 個あります。気になるなら版を固定します）" % unp,
                   " (%d MCP server%s fetch%s the latest version every time; pin the version if that worries you)" % (
@@ -1580,6 +1618,28 @@ def next_steps(facts):
                        "Follow its three rules and walk me through it step by step, starting with making a copy of my app. "
                        "Show me each command and ask me before installing or running anything. Never point it at a live site or other folders, "
                        "and never show keys on screen or write them to files." % STRIX_GUIDE),
+        })
+    nm = [m for m in ((facts.get("aiKeys") or {}).get("mcp") or []) if m.get("authHeader") is False]
+    if nm:
+        names = join([same("%s（%s）" % (m["name"], m["app"])) for m in nm])
+        who = ", ".join("%s (%s)" % (m["name"], m["app"]) for m in nm)
+        res.append({
+            "cat": "mcpauth", "level": "next", "effort": HELP,
+            "title": t("この Mac からは認証の要否が分からない遠隔 MCP", "Remote MCP servers whose sign-in can't be checked from this Mac"),
+            "what": cat_text(t("次の遠隔 MCP は、設定ファイルに認証用のヘッダーがありません: ", "These remote MCP servers have no auth header in their settings: "), names),
+            "why": t("OAuth（ブラウザでログインする方式）で認証しているなら、トークンは設定ファイルに残らないので、これで正常です。"
+                     "認証がなく誰でも使えるサーバーなら、悪い指示を返されたり、渡した情報が読まれたりするおそれがあります。",
+                     "If the server signs in with OAuth (a browser login), the token isn't kept in the settings file, so this is normal. "
+                     "If it needs no sign-in at all, anyone can use it, and it could return bad instructions or read what you send."),
+            "how": t("そのサーバーの提供元の説明で、認証が要るかを確かめます。要るのに入れていないなら、サーバーの案内どおりに認証を設定します。",
+                     "Check the provider's documentation to see whether sign-in is required. If it is and you haven't set it up, follow their instructions."),
+            "time": t("約10分", "About 10 min"),
+            "keep": t("使っているサーバーが OAuth で認証しているなら、そのままで大丈夫です", "If the server uses OAuth, it's fine as it is"),
+            "askAi": t("BB Preflight が、認証用のヘッダーがない遠隔 MCP を見つけました: %s。それぞれの提供元の説明を調べて、認証が必要か、OAuth で済んでいるのかを教えてください。"
+                       "設定ファイルは、案を見せて私に確かめるまで書き換えないでください。トークンの値は画面に出さないでください。" % who,
+                       "BB Preflight found remote MCP servers with no auth header: %s. Check each provider's documentation and tell me whether sign-in "
+                       "is required, or whether OAuth already covers it. Don't edit any settings file until I've approved the change, "
+                       "and never show token values." % who),
         })
     return res
 
