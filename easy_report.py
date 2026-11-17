@@ -26,6 +26,11 @@ def same(s):
     return t(s, s)
 
 
+def paren(a, b):
+    """「a（b）」。英語は半角かっこにする。"""
+    return t("%s（%s）" % (a, b), "%s (%s)" % (a, b))
+
+
 def join(items):
     """t() の並びを、日本語は「、」、英語は「, 」でつなぐ。"""
     return t("、".join(x["ja"] for x in items), ", ".join(x["en"] for x in items))
@@ -1467,7 +1472,7 @@ def aikeys_findings(k, todo, good):
                      "BB Preflight found plain-text keys in: %s. Without showing the key values, walk me through moving them to Keychain or environment "
                      "variables for my setup. Show me the proposed change before editing anything." % ", ".join(r[0] for r in rows))))
     if mcp_http:
-        names = join([same("%s（%s）" % (m["name"], m["app"])) for m in mcp_http])
+        names = join([paren(m["name"], m["app"]) for m in mcp_http])
         todo.append(finding(
             "aikeys", YELLOW, t("暗号化されていない通信の MCP があります", "An MCP server uses an unencrypted connection"),
             cat_text(t("次の MCP サーバーは、インターネットの先に http（暗号化なし）でつながっています: ",
@@ -1543,7 +1548,7 @@ def ext_findings(e, todo, good):
     bad = [x for x in items if x.get("bad")]
     side = [x for x in items if not x.get("bad")]
     if bad:
-        names = join([same("%s（%s）" % (x["name"], x["browser"])) for x in bad])
+        names = join([paren(x["name"], x["browser"]) for x in bad])
         todo.append(finding(
             "ext", RED, t("AI の会話を盗むと報告された拡張機能が入っています", "An extension reported to steal AI chats is installed"),
             cat_text(t("次の拡張機能は、AI との会話を外へ送ると報告されたものです: ", "These extensions were reported to send your AI chats out: "), names),
@@ -1700,7 +1705,7 @@ def next_steps(facts):
             for u in facts.get("urls", []) if u.get("headers")]
     gaps = [(url, miss) for url, miss in gaps if miss]
     if gaps:
-        lines = join([same("%s（%s）" % (url, ", ".join(miss))) for url, miss in gaps])
+        lines = join([paren(url, ", ".join(miss)) for url, miss in gaps])
         who = "; ".join("%s (%s)" % (url, ", ".join(miss)) for url, miss in gaps)
         res.append({
             "cat": "headers", "level": "next", "effort": HELP,
@@ -1721,7 +1726,7 @@ def next_steps(facts):
         })
     nm = [m for m in ((facts.get("aiKeys") or {}).get("mcp") or []) if m.get("authHeader") is False]
     if nm:
-        names = join([same("%s（%s）" % (m["name"], m["app"])) for m in nm])
+        names = join([paren(m["name"], m["app"]) for m in nm])
         who = ", ".join("%s (%s)" % (m["name"], m["app"]) for m in nm)
         res.append({
             "cat": "mcpauth", "level": "next", "effort": HELP,

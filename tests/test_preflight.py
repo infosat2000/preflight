@@ -775,6 +775,15 @@ class ProbeUrlsTest(unittest.TestCase):
         oks = json.dumps(easy_report.build_data(f)["ok"], ensure_ascii=False)
         self.assertIn("状態の確認では", oks)
 
+    def test_headers_next_step_en_has_no_fullwidth_parens(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("200", "", "")
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        d = easy_report.build_data(f)
+        blob = json.dumps(d, ensure_ascii=False)
+        self.assertIn("https://a.example.com/（", blob)  # 日本語側は全角
+        self.assertIn("https://a.example.com/ (", blob)  # 英語側は半角
+
     def test_exposure_is_opt_in(self):
         self.probe([{"id": "a", "url": "https://a.example.com/"}])
         self.assertEqual(self.fetches, [])
