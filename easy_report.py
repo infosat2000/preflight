@@ -457,6 +457,17 @@ def analyze(facts):
     if facts.get("urls") and not site_issue and not any(o["cat"] == "sites" for o in ok):
         good("sites", t("登録した公開サイトの状態の確認では、気になる応答はありませんでした（応答ヘッダーは、開けたサイトだけ確認しています）。",
                         "The status check of your listed public sites showed nothing worrying (response headers are checked only on sites that opened)."))
+    # exposureCheck を付けたサイトがあれば、「自分のサーバーだけに使う」注記を1行出す（赤・黄の件数には数えない）
+    hosts = []
+    for u in facts.get("urls", []):
+        m = re.match(r"https?://[^/]+", u.get("url", "")) if "exposure" in u else None
+        if m and m.group(0) not in hosts:
+            hosts.append(m.group(0))
+    if hosts:
+        good("sites", t("次のサイトで、/.env と /.git/config が読めないかを確認しました: %s。この確認は、自分で管理しているサーバーだけに付ける項目です。"
+                        "借りているサービスの共通ドメインや、他人のサイトには付けないでください。" % "、".join(hosts),
+                        "Checked whether /.env and /.git/config can be read on: %s. This check is only for servers you manage yourself. "
+                        "Do not turn it on for shared domains of services you rent, or for other people's sites." % ", ".join(hosts)))
 
     secrets = facts.get("secrets", [])
     # .env 系で、本人しか読めず、Git に載らない置き方なら、開発ではふつう（確認だけ）。それ以外は赤
