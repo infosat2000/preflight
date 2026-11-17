@@ -746,6 +746,35 @@ class ProbeUrlsTest(unittest.TestCase):
         self.assertIn("管理画面が、ログインなしで開きます", titles)
         self.assertNotIn("暗号化されない入口が開いています", titles)
 
+    def test_admin_http_open_when_https_redirects_or_unreachable(self):
+        import easy_report
+        self.responses["https://a.example.com/admin/"] = ("302", "https://login.other.example/", "")
+        self.responses["http://a.example.com/admin/"] = ("200", "", "")
+        # https が転送で、http が 200
+        f = facts(); f["urls"] = self.probe([{"id": "a-admin", "url": "https://a.example.com/admin/"}])
+        titles = [x["title"]["ja"] for x in easy_report.build_data(f)["todo"]]
+        self.assertIn("管理画面が、ログインなしで開きます", titles)
+        # https がつながらず、http が 200
+        self.responses.pop("https://a.example.com/admin/")
+        f = facts(); f["urls"] = self.probe([{"id": "a-admin", "url": "https://a.example.com/admin/"}])
+        titles = [x["title"]["ja"] for x in easy_report.build_data(f)["todo"]]
+        self.assertIn("管理画面が、ログインなしで開きます", titles)
+
+    def test_http_open_is_yellow_even_when_https_redirects(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("301", "https://www.a.example.com/", "")
+        self.responses["http://a.example.com/"] = ("200", "", "")
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        d = easy_report.build_data(f)
+        self.assertEqual(len([x for x in d["todo"] if "暗号化されない入口" in x["title"]["ja"]]), 1)
+
+    def test_catch_all_sentence_is_limited_to_status_check(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("301", "https://www.a.example.com/", "")
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        oks = json.dumps(easy_report.build_data(f)["ok"], ensure_ascii=False)
+        self.assertIn("状態の確認では", oks)
+
     def test_exposure_is_opt_in(self):
         self.probe([{"id": "a", "url": "https://a.example.com/"}])
         self.assertEqual(self.fetches, [])

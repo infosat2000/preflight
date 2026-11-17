@@ -390,7 +390,7 @@ def analyze(facts):
                              "漏れた可能性のある鍵を発行し直す手順を教えてください。鍵の値は画面に出さず、ファイルにも書かないでください。" % full,
                              "%s can be read from outside. Find out where the site is hosted and tell me how to take this file out of the "
                              "public folder, and how to reissue any keys that may have leaked. Never show key values or write them to files." % full)))
-        if "admin" not in uid and not uid.startswith("old-") and v in ("open", "auth_required") and hv == "open":
+        if "admin" not in uid and not uid.startswith("old-") and hv == "open":
             site_issue = True
             hurl = "http://" + url[len("https://"):] if url.startswith("https://") else url
             todo.append(finding(
@@ -406,7 +406,7 @@ def analyze(facts):
                          "http を https へ転送する設定の手順を、私の環境に合わせて教えてください。" % hurl,
                          "Connecting to %s over http answers without redirecting to https. Find out where the site is hosted and tell me "
                          "the steps, for my setup, to redirect http to https." % hurl)))
-        if "admin" in uid and (v == "open" or (v == "auth_required" and hv == "open")):
+        if "admin" in uid and (v == "open" or hv == "open"):
             if v != "open":
                 url = "http://" + url[len("https://"):] if url.startswith("https://") else url
             site_issue = True
@@ -450,8 +450,8 @@ def analyze(facts):
             good("sites", t("%s は誰でも見られます（公開用のサイトなら正常です）。" % url,
                             "Anyone can see %s (this is fine for a public site)." % url))
     if facts.get("urls") and not site_issue and not any(o["cat"] == "sites" for o in ok):
-        good("sites", t("登録した公開サイトに、気になる応答はありませんでした。",
-                        "Your listed public sites showed nothing worrying."))
+        good("sites", t("登録した公開サイトの状態の確認では、気になる応答はありませんでした（応答ヘッダーは、開けたサイトだけ確認しています）。",
+                        "The status check of your listed public sites showed nothing worrying (response headers are checked only on sites that opened)."))
 
     secrets = facts.get("secrets", [])
     # .env 系で、本人しか読めず、Git に載らない置き方なら、開発ではふつう（確認だけ）。それ以外は赤
