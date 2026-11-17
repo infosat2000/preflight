@@ -26,6 +26,11 @@ def same(s):
     return t(s, s)
 
 
+def paren(a, b):
+    """「a（b）」。英語は半角かっこにする。"""
+    return t("%s（%s）" % (a, b), "%s (%s)" % (a, b))
+
+
 def join(items):
     """t() の並びを、日本語は「、」、英語は「, 」でつなぐ。"""
     return t("、".join(x["ja"] for x in items), ", ".join(x["en"] for x in items))
@@ -162,6 +167,9 @@ def key_kinds(hits):
 
 
 def why_loose(hits):
+    if any(h.get("gitTracked") is True for h in hits):
+        return t("Git に記録されています。GitHub などに上げていなくても、履歴に残ります",
+                 "It is recorded in Git, so it stays in the history even if you never pushed it to GitHub")
     if any(h.get("gitIgnored") is False for h in hits):
         return t("Git で管理しているフォルダにあり、GitHub などに上がるおそれがあります",
                  "It is in a folder tracked by Git, so it could end up on GitHub or similar sites")
@@ -368,7 +376,44 @@ def analyze(facts):
     site_issue = False
     for u in facts.get("urls", []):
         uid, url, v = u.get("id", ""), u.get("url", ""), u.get("verdict")
-        if "admin" in uid and v == "open":
+        hv = u.get("httpVerdict")
+        for kind, path in (("env", "/.env"), ("git", "/.git/config")):
+            if (u.get("exposure") or {}).get(kind):
+                site_issue = True
+                root = re.match(r"https?://[^/]+", url)
+                full = (root.group(0) if root else url) + path
+                todo.append(finding(
+                    "sites", RED, t("%s が、誰にでも読めます" % path, "%s can be read by anyone" % path),
+                    t("%s にアクセスすると、設定や鍵が書かれたファイルの中身が返ってきました（中身はこの報告には記録していません）。" % full,
+                      "Visiting %s returned the contents of a settings or key file (the contents are not recorded in this report)." % full),
+                    t("ファイルに鍵やパスワードが入っていれば、誰でも盗めます。見つけられるのは時間の問題です。",
+                      "If the file holds keys or passwords, anyone can take them. It is only a matter of time before someone finds it."),
+                    t("そのファイルをサーバーの公開場所から外し、中に書かれていた鍵はすべて発行し直します。",
+                      "Remove the file from the server's public folder, and reissue every key that was written in it."),
+                    time=t("30分〜", "30 min or more"),
+                    ask_ai=t("%s が外から読めてしまいます。どこで動いているサイトか調べ、このファイルを公開場所から外す手順と、"
+                             "漏れた可能性のある鍵を発行し直す手順を教えてください。鍵の値は画面に出さず、ファイルにも書かないでください。" % full,
+                             "%s can be read from outside. Find out where the site is hosted and tell me how to take this file out of the "
+                             "public folder, and how to reissue any keys that may have leaked. Never show key values or write them to files." % full)))
+        if "admin" not in uid and not uid.startswith("old-") and hv == "open":
+            site_issue = True
+            hurl = "http://" + url[len("https://"):] if url.startswith("https://") else url
+            todo.append(finding(
+                "sites", YELLOW, t("暗号化されない入口が開いています", "An unencrypted entrance is open"),
+                t("%s に http（暗号化なし）でつなぐと、https へ転送されず、そのまま応答が返りました。" % hurl,
+                  "Connecting to %s over http (no encryption) was not redirected to https, and it answered as is." % hurl),
+                t("http でつないだ人は、通信の中身を途中で読まれたり書き換えられたりするおそれがあります。",
+                  "Someone who connects over http could have their traffic read or changed along the way."),
+                t("サーバーやホスティングの設定で、http でのアクセスを https へ転送します。",
+                  "In your server or hosting settings, redirect http requests to https."),
+                time=t("15分〜", "15 min or more"),
+                ask_ai=t("%s に http でつなぐと、https へ転送されずに応答します。どこで動いているサイトか調べ、"
+                         "http を https へ転送する設定の手順を、私の環境に合わせて教えてください。" % hurl,
+                         "Connecting to %s over http answers without redirecting to https. Find out where the site is hosted and tell me "
+                         "the steps, for my setup, to redirect http to https." % hurl)))
+        if "admin" in uid and (v == "open" or hv == "open"):
+            if v != "open":
+                url = "http://" + url[len("https://"):] if url.startswith("https://") else url
             site_issue = True
             todo.append(finding(
                 "sites", RED, t("管理画面が、ログインなしで開きます", "Your admin page opens without a login"),
@@ -410,13 +455,13 @@ def analyze(facts):
             good("sites", t("%s は誰でも見られます（公開用のサイトなら正常です）。" % url,
                             "Anyone can see %s (this is fine for a public site)." % url))
     if facts.get("urls") and not site_issue and not any(o["cat"] == "sites" for o in ok):
-        good("sites", t("登録した公開サイトに、気になる応答はありませんでした。",
-                        "Your listed public sites showed nothing worrying."))
+        good("sites", t("登録した公開サイトの状態の確認では、気になる応答はありませんでした（応答ヘッダーは、開けたサイトだけ確認しています）。",
+                        "The status check of your listed public sites showed nothing worrying (response headers are checked only on sites that opened)."))
 
     secrets = facts.get("secrets", [])
     # .env 系で、本人しか読めず、Git に載らない置き方なら、開発ではふつう（確認だけ）。それ以外は赤
     tidy = [h for h in secrets if os.path.basename(h["file"]).startswith(".env")
-            and h.get("private") and h.get("gitIgnored") is not False]
+            and h.get("private") and h.get("gitIgnored") is not False and h.get("gitTracked") is not True]
     loose = [h for h in secrets if h not in tidy]
     if loose:
         kinds, files, why = join(key_kinds(loose)), join([same(h["file"]) for h in loose]), why_loose(loose)
@@ -686,9 +731,9 @@ def more_findings(facts, todo, good):
                 t("読み込んだ Web ページやファイルに悪い指示が仕込まれていると（プロンプトインジェクション）、AI がファイルを消したり鍵を外へ送ったりしても止められません。",
                   "If a web page or file the AI reads contains hidden instructions (prompt injection), nothing stops the AI from deleting files "
                   "or sending your keys out."),
-                t("Claude Code で /permissions を開いて、広すぎる許可を消します。設定ファイルの \"defaultMode\": \"bypassPermissions\" は消すか \"default\" にします。",
+                t("Claude Code で /permissions を開いて、広すぎる許可を消します。設定ファイルの \"defaultMode\": \"bypassPermissions\" は消すか \"default\" にします。あわせて /sandbox でサンドボックスを有効にすると、被害を狭められます。",
                   "Open /permissions in Claude Code and remove the overly broad rules. In the settings file, remove "
-                  "\"defaultMode\": \"bypassPermissions\" or set it to \"default\"."),
+                  "\"defaultMode\": \"bypassPermissions\" or set it to \"default\". Turning on the sandbox (/sandbox) also limits the damage."),
                 time=t("約10分", "About 10 min"),
                 undo=t("消した許可は、/permissions からいつでも足し直せます", "You can add a rule back at any time from /permissions"),
                 ask_ai=t("Claude Code の設定（%s）に、確認なしで何でも実行できる許可が入っています。私がふだん使う作業に必要な許可だけを、"
@@ -1354,8 +1399,8 @@ def repo_findings(r, todo, good):
                      "BB Preflight found settings that run things when a folder opens: %s. Without running anything, explain what each one runs, "
                      "and use git history to find when and by whom it was added. Don't change anything yet." % ", ".join(x[0] for x in yellow))))
     if not red and not yellow:
-        good("repo", t("走査範囲のプロジェクトに、開くだけで動く仕掛けや、AI への見えない指示はありませんでした。",
-                       "No open-to-run traps or hidden AI instructions were found in the projects we checked."))
+        good("repo", t("走査範囲のプロジェクトと AI のメモリ・指示ファイルに、開くだけで動く仕掛けや、AI への見えない指示はありませんでした。",
+                       "No open-to-run traps or hidden AI instructions were found in the projects we checked, or in your AI memory and instruction files."))
 
 
 CRED_NAME = {"git": "Git", "npm": "npm", "gh": "GitHub CLI", "docker": "Docker", "netrc": ".netrc", "pypi": "PyPI",
@@ -1380,7 +1425,7 @@ PLAIN_FIX = {
 
 
 def aikeys_findings(k, todo, good):
-    if not k or not any(k.get(x) for x in ("credFiles", "mcp", "cli")):
+    if not k or not any(k.get(x) for x in ("credFiles", "mcp", "cli", "sandbox")):
         return
     creds = k.get("credFiles") or []
     # 鍵を入れるための置き場所（plain が None）か、平文の鍵が見つかったものだけ。鍵の無い設定ファイルは読めても困らない
@@ -1427,7 +1472,7 @@ def aikeys_findings(k, todo, good):
                      "BB Preflight found plain-text keys in: %s. Without showing the key values, walk me through moving them to Keychain or environment "
                      "variables for my setup. Show me the proposed change before editing anything." % ", ".join(r[0] for r in rows))))
     if mcp_http:
-        names = join([same("%s（%s）" % (m["name"], m["app"])) for m in mcp_http])
+        names = join([paren(m["name"], m["app"]) for m in mcp_http])
         todo.append(finding(
             "aikeys", YELLOW, t("暗号化されていない通信の MCP があります", "An MCP server uses an unencrypted connection"),
             cat_text(t("次の MCP サーバーは、インターネットの先に http（暗号化なし）でつながっています: ",
@@ -1437,6 +1482,44 @@ def aikeys_findings(k, todo, good):
             t("その MCP の URL を https に変えます。https に対応していないサーバーは使わないようにします。",
               "Change that MCP server's URL to https. Stop using servers that don't support https."),
             SELF, time=t("約5分", "About 5 min")))
+    sb = k.get("sandbox") or []
+    sb_red = [x for x in sb if "neverAsk" in x["kinds"]]
+    sb_yel = [x for x in sb if "neverAsk" not in x["kinds"] and "dangerFull" in x["kinds"]]
+    sb_wide = [x for x in sb if "wideRoots" in x["kinds"]]
+    if sb_red:
+        where = join([same(x["file"]) for x in sb_red])
+        todo.append(finding(
+            "aikeys", RED, t("Codex が、囲いも確認もなしで何でも実行できる設定です", "Codex can run anything with no sandbox and no confirmation"),
+            cat_text(t("Codex の設定で、サンドボックス（作業範囲の囲い）を外し（danger-full-access）、確認も省く（approval_policy = never）指定があります: ",
+                       "Codex is set to turn off the sandbox (danger-full-access) and skip confirmations (approval_policy = never): "), where),
+            t("読み込んだ Web ページやファイルに悪い指示が仕込まれていると（プロンプトインジェクション）、AI がファイルを消したり鍵を外へ送ったりしても、囲いも確認も止めてくれません。",
+              "If a web page or file the AI reads contains hidden instructions (prompt injection), neither a sandbox nor a confirmation will stop it "
+              "from deleting files or sending your keys out."),
+            t("設定ファイルで sandbox_mode を workspace-write に、approval_policy を on-request に戻します。",
+              "In the settings file, set sandbox_mode back to workspace-write and approval_policy to on-request."),
+            SELF, time=t("約5分", "About 5 min"),
+            undo=t("書き換える前の値を控えておけば、いつでも戻せます", "Note the old values first and you can restore them any time"),
+            ask_ai=t("Codex の設定（%s）で、サンドボックスを外し、確認も省く指定になっています。作業に必要な範囲だけを許す設定の案を出してください。"
+                     "書き換える前に、変更の案を見せて私に確かめてください。" % where["ja"],
+                     "My Codex settings (%s) turn off the sandbox and skip confirmations. Propose a setup that allows only the folders I need. "
+                     "Show me the change before editing anything." % where["en"])))
+    if sb_yel or sb_wide:
+        parts = []
+        if sb_yel:
+            parts.append(cat_text(t("サンドボックスを外す指定（danger-full-access）: ", "sandbox turned off (danger-full-access): "), join([same(x["file"]) for x in sb_yel])))
+        if sb_wide:
+            parts.append(cat_text(t("書き込める場所がホーム全体など広すぎる指定: ", "writable folders that are too broad (such as your whole home folder): "),
+                                  join([same(x["file"]) for x in sb_wide])))
+        todo.append(finding(
+            "aikeys", YELLOW, t("Codex の囲いが、広く開いています", "Codex's sandbox is wide open"),
+            cat_text(t("Codex の設定に、次の指定があります。", "Your Codex settings have: "), join(parts) if len(parts) > 1 else parts[0], t("", ".")),
+            t("AI が悪い指示を読み込んだとき、作業フォルダの外のファイルまで書き換えられます。確認が入る設定なら、まだ止められます。",
+              "If the AI reads bad instructions, it can change files outside your work folder. If confirmations are still on, you can still stop it."),
+            t("sandbox_mode を workspace-write にし、writable_roots は作業用のフォルダだけにします。",
+              "Set sandbox_mode to workspace-write and limit writable_roots to your work folders."),
+            SELF, time=t("約5分", "About 5 min"),
+            keep=t("信頼できる作業だけに使い、そのつど確認している設定なら、すぐ危ないわけではありません",
+                   "If you only use it for trusted work and still confirm each step, it is not an urgent danger")))
     if old:
         rows = [(c["name"], t("%s（%s より前の版に既知の脆弱性 %s）" % (c["version"], c["fixed"], c["cve"]),
                               "%s (versions before %s have known flaw %s)" % (c["version"], c["fixed"], c["cve"]))) for c in old]
@@ -1449,7 +1532,7 @@ def aikeys_findings(k, todo, good):
               "Update that AI tool to the latest version (this is separate from macOS updates)."),
             SELF, time=t("約5分", "About 5 min"),
             keep=t("macOS の版は変わりません。AI ツールだけの更新です", "This doesn't change your macOS version. Only the AI tool is updated")))
-    if not (open_files or plain or mcp_keys or mcp_http or old):
+    if not (open_files or plain or mcp_keys or mcp_http or old or sb_red or sb_yel or sb_wide):
         unp = len([m for m in mcp if m.get("unpinned")])
         extra = t("（版を固定せずに毎回取ってくる MCP が %d 個あります。気になるなら版を固定します）" % unp,
                   " (%d MCP server%s fetch%s the latest version every time; pin the version if that worries you)" % (
@@ -1465,7 +1548,7 @@ def ext_findings(e, todo, good):
     bad = [x for x in items if x.get("bad")]
     side = [x for x in items if not x.get("bad")]
     if bad:
-        names = join([same("%s（%s）" % (x["name"], x["browser"])) for x in bad])
+        names = join([paren(x["name"], x["browser"]) for x in bad])
         todo.append(finding(
             "ext", RED, t("AI の会話を盗むと報告された拡張機能が入っています", "An extension reported to steal AI chats is installed"),
             cat_text(t("次の拡張機能は、AI との会話を外へ送ると報告されたものです: ", "These extensions were reported to send your AI chats out: "), names),
@@ -1577,6 +1660,91 @@ def next_steps(facts):
                        "Follow its three rules and walk me through it step by step, starting with making a copy of my app. "
                        "Show me each command and ask me before installing or running anything. Never point it at a live site or other folders, "
                        "and never show keys on screen or write them to files." % STRIX_GUIDE),
+        })
+    if facts.get("urls"):
+        res.append({
+            "cat": "appcode", "level": "next", "effort": HELP,
+            "title": t("自分のアプリのコードを、AI に読んで点検してもらう（任意）", "Have an AI read your own app's code for common mistakes (optional)"),
+            "what": t("この点検は Mac の戸締まりを見るもので、自分で作ったアプリのコードの中身は読んでいません。公開しているサイトがあるなら、"
+                      "コードを AI に読ませて、次の3つの型の書き間違いがないかを調べてもらえます。測った結果ではなく、あくまで見直しの依頼です。",
+                      "This check looks at how your Mac is locked down. It does not read the code inside apps you built. If you run public sites, "
+                      "you can ask an AI to read the code for three kinds of common mistakes. It is a request to review, not a measured result."),
+            "why": t("画面の上では普通に動くので、書き間違いに気づけません。"
+                     "1. 他人のデータが見えてしまう（IDを変えると他人の予約が見える、データベースの行ごとの制限がない）。"
+                     "2. 入力欄やURLからの攻撃（SQL・画面・コマンド・ファイルの場所・外部への通信などに、入力をそのまま渡している）。"
+                     "3. AI の出力の扱い（AI が返した文字を、確かめずに SQL・画面・コマンドへそのまま渡している）。",
+                     "Nothing looks wrong on screen, so these mistakes go unnoticed. "
+                     "1. Other people's data becomes visible (changing an ID shows someone else's booking, or the database has no per-row limits). "
+                     "2. Attacks through input fields and URLs (input goes straight into SQL, a page, a command, a file path or an outgoing request). "
+                     "3. Handling of AI output (text the AI returned goes straight into SQL, a page or a command without checks)."),
+            "how": t("自分のアプリの複製を AI に読ませ、上の3つの型ごとに、危ない書き方の箇所を一覧にしてもらいます。直す前に、必ず案を見せてもらいます。",
+                     "Let an AI read a copy of your app and list, for each of the three kinds above, the places that are written in a risky way. "
+                     "Ask it to show you its proposed fix before changing anything."),
+            "steps": [
+                t("アプリのフォルダを、別の場所に複製します。本番の鍵やデータは置きません", "Copy the app folder somewhere else. Don't keep production keys or data in it"),
+                t("下の依頼文を AI に渡し、3つの型ごとの一覧を出してもらいます", "Give the request below to an AI and ask for a list for each of the three kinds"),
+                t("一覧のうち、本当に起きうるものだけを選び、直す案を見せてもらってから直します", "Pick only the items that can really happen, and have the AI show its fix before it edits"),
+            ],
+            "time": t("約1時間", "About 1 hour"),
+            "keep": t("自分しか使わないもの、他人の情報を扱わないもの、まだ公開していないものなら、急ぐ必要はありません",
+                      "No rush if it's only for you, doesn't handle other people's data, or isn't public yet"),
+            "askAi": t("自分で作ったアプリのコードを、次の3つの型で見直してください。(1) 他人のデータが見える書き方（ID を変えるだけで他人の情報が取れる、"
+                       "データベースの行ごとの制限がない）。(2) 入力欄や URL からの攻撃（SQL・画面・コマンド・ファイルの場所・外部への通信に、入力をそのまま渡している）。"
+                       "(3) AI の出力を確かめずに SQL・画面・コマンドへ渡している書き方。"
+                       "まず、型ごとに危ない箇所を、ファイル名と行つきで一覧にしてください。本当に起きうるかも、ふつうの言葉で添えてください。"
+                       "コードは、直す案を見せて私が確かめるまで書き換えないでください。本番のサイトやデータには向けず、鍵は画面やファイルに出さないでください。",
+                       "Please review the code of an app I built for three kinds of mistakes. (1) Code that exposes other people's data (changing an ID "
+                       "is enough to read someone else's data, or the database has no per-row limits). (2) Attacks through input fields and URLs "
+                       "(input goes straight into SQL, a page, a command, a file path or an outgoing request). (3) Code that passes AI output "
+                       "into SQL, a page or a command without checks. First list the risky places for each kind, with file names and line numbers, "
+                       "and say in plain words whether each could really happen. Don't edit any code until I've approved your proposed fix. "
+                       "Don't point this at a live site or live data, and never show keys on screen or write them to files."),
+        })
+    HDR = (("hsts", "Strict-Transport-Security"), ("nosniff", "X-Content-Type-Options"), ("frameProtect", "X-Frame-Options / frame-ancestors"))
+    gaps = [(u["url"], [n for k, n in HDR if k in u["headers"] and not u["headers"][k]])
+            for u in facts.get("urls", []) if u.get("headers")]
+    gaps = [(url, miss) for url, miss in gaps if miss]
+    if gaps:
+        lines = join([paren(url, ", ".join(miss)) for url, miss in gaps])
+        who = "; ".join("%s (%s)" % (url, ", ".join(miss)) for url, miss in gaps)
+        res.append({
+            "cat": "headers", "level": "next", "effort": HELP,
+            "title": t("公開サイトの応答に、安全のための見出し（ヘッダー）が足りません", "Your public sites are missing some safety headers"),
+            "what": cat_text(t("次のサイトで、応答に付いていないヘッダーがありました: ", "These sites are missing some response headers: "), lines),
+            "why": t("ヘッダーは、ブラウザに「安全な使い方」を伝える合図です。無くてもすぐ破られるわけではありませんが、付けておくと、"
+                     "暗号化の強制や、別サイトの中に埋め込まれての悪用を防ぎやすくなります。",
+                     "Headers tell the browser how to use your site safely. A site without them isn't broken into right away, but with them "
+                     "encryption is enforced and it is harder to abuse your site by embedding it inside another."),
+            "how": t("サーバーやホスティングの設定で、足りないヘッダーを追加します。急ぎではありません。",
+                     "Add the missing headers in your server or hosting settings. This is not urgent."),
+            "time": t("約20分", "About 20 min"),
+            "keep": t("急ぎでなければ、このままでも大丈夫です", "If it isn't urgent, you can leave it as it is"),
+            "askAi": t("BB Preflight が、次の公開サイトで足りない応答ヘッダーを見つけました: %s。どこで動いているサイトか調べ、"
+                       "足りないヘッダーを追加する設定の手順を、私の環境に合わせて教えてください。設定を書き換える前に、案を見せてください。" % who,
+                       "BB Preflight found response headers missing on these public sites: %s. Find out where each site is hosted and tell me "
+                       "the steps, for my setup, to add the missing headers. Show me your proposal before changing any settings." % who),
+        })
+    nm = [m for m in ((facts.get("aiKeys") or {}).get("mcp") or []) if m.get("authHeader") is False]
+    if nm:
+        names = join([paren(m["name"], m["app"]) for m in nm])
+        who = ", ".join("%s (%s)" % (m["name"], m["app"]) for m in nm)
+        res.append({
+            "cat": "mcpauth", "level": "next", "effort": HELP,
+            "title": t("この Mac からは認証の要否が分からない遠隔 MCP", "Remote MCP servers whose sign-in can't be checked from this Mac"),
+            "what": cat_text(t("次の遠隔 MCP は、設定ファイルに認証用のヘッダーがありません: ", "These remote MCP servers have no auth header in their settings: "), names),
+            "why": t("OAuth（ブラウザでログインする方式）で認証しているなら、トークンは設定ファイルに残らないので、これで正常です。"
+                     "認証がなく誰でも使えるサーバーなら、悪い指示を返されたり、渡した情報が読まれたりするおそれがあります。",
+                     "If the server signs in with OAuth (a browser login), the token isn't kept in the settings file, so this is normal. "
+                     "If it needs no sign-in at all, anyone can use it, and it could return bad instructions or read what you send."),
+            "how": t("そのサーバーの提供元の説明で、認証が要るかを確かめます。要るのに入れていないなら、サーバーの案内どおりに認証を設定します。",
+                     "Check the provider's documentation to see whether sign-in is required. If it is and you haven't set it up, follow their instructions."),
+            "time": t("約10分", "About 10 min"),
+            "keep": t("使っているサーバーが OAuth で認証しているなら、そのままで大丈夫です", "If the server uses OAuth, it's fine as it is"),
+            "askAi": t("BB Preflight が、認証用のヘッダーがない遠隔 MCP を見つけました: %s。それぞれの提供元の説明を調べて、認証が必要か、OAuth で済んでいるのかを教えてください。"
+                       "設定ファイルは、案を見せて私に確かめるまで書き換えないでください。トークンの値は画面に出さないでください。" % who,
+                       "BB Preflight found remote MCP servers with no auth header: %s. Check each provider's documentation and tell me whether sign-in "
+                       "is required, or whether OAuth already covers it. Don't edit any settings file until I've approved the change, "
+                       "and never show token values." % who),
         })
     return res
 

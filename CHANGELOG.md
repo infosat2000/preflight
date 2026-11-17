@@ -5,9 +5,19 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-17
+
+公開サイトの確認と、AI エージェント設定の点検を深めた版。どれも読み取り専用で、sudo は使わず、点検の結果は Mac から出さない（外への通信は、台帳に書いた自分の公開 URL への確認だけ）。
+
 ### 追加
 - Claude Code などのAIエージェント向けスキル `skills/bb-preflight/SKILL.md`。「この Mac を点検して」で点検を回し、結果を説明し、1件ずつ OK をもらって直す。`npx skills add infosat2000/preflight` で入る。
 - 受け口の申し込みの流れを週ごとに数える `signup/funnel.sh`（読むだけ。件数だけを出す）。
+- git で追跡されている `.env` や鍵のファイルを知らせる（`gitTracked`）。中身の値は記録しない。
+- AI の記憶・指示ファイル（Claude のメモリ、`CLAUDE.local.md`、`~/.codex/AGENTS.md`、`~/.gemini/GEMINI.md`）の見えない文字の点検。タグ文字は赤、向きを変える文字とゼロ幅文字（3個以上）は黄。
+- Codex のサンドボックス設定の点検。`sandbox_mode = "danger-full-access"` は黄、`approval_policy = "never"` と同じファイルにあれば赤。`writable_roots` がホーム全体・`/`・`/Users` なら黄。プロファイルのファイルも読む。Claude の `bypassPermissions` の直し方に、サンドボックスを有効にする一文を足した。
+- 認証用のヘッダーがない遠隔 MCP を「次の一歩」に名前だけ並べる（`authHeader`。値は読まない）。OAuth の場合は設定ファイルに残らないため、赤・黄には数えない。localhost は除く。
+- 「次の一歩」に、自分のアプリのコードを AI に点検してもらう依頼文を追加。他人のデータが見える書き方、入力欄や URL からの攻撃、AI の出力の扱いの3つの型。台帳に公開サイトがあるときだけ出す。測った結果ではなく見直しの依頼で、赤・黄の数と総合判定には入れない。
+- 公開URLの追加確認。応答ヘッダー（HSTS・X-Content-Type-Options・フレーム埋め込みの防止）の有無は「次の一歩」に並べ、赤・黄には数えない。https のURLが http で転送されずに応答したら黄（管理画面なら赤）。台帳で `exposureCheck: true` を付けたURLだけ、`/.env` と `/.git/config` が読めたら赤。読んだ中身・ヘッダーの値は記録しない。
 
 ## [1.3.0] - 2026-11-06
 

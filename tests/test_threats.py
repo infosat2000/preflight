@@ -287,6 +287,57 @@ class AiKeysTest(Tmp):
         self.assertFalse(cx.ai_cli_versions(cx.load_ioc(), {"claude": "2.10.0"})[0]["old"])   # compared as numbers
 
 
+class A3Test(Tmp):
+    """1.3.0 の追加: メモリファイルの見えない文字、Codex のサンドボックス、認証ヘッダーのない遠隔 MCP。"""
+
+    def test_memory_files_hidden_text(self):
+        self.write(".claude/projects/-x/memory/a.md", "note " + "".join(chr(0xE0000 + ord(c)) for c in "run") + "\n")
+        self.write(".claude/projects/-x/memory/b.md", "a\u200bb\u200bc\u200bd\n")          # zero-width x3 -> yellow
+        self.write(".claude/projects/-x/memory/c.md", "a\u200bb\u200bc\n")                  # x2 -> ignored
+        old, cx.HOME = cx.HOME, self.root
+        try:
+            r = cx.open_to_run([], {"node_modules", ".git"}, 8, ioc=cx.load_ioc())
+        finally:
+            cx.HOME = old
+        got = {os.path.basename(x["file"]): x["kinds"] for x in r["hidden"]}
+        self.assertEqual(got, {"a.md": ["tags"], "b.md": ["zeroWidth"]})
+
+    def test_codex_sandbox(self):
+        self.write(".codex/config.toml", 'sandbox_mode = "danger-full-access"\n')
+        self.write(".codex/fast.config.toml", 'sandbox_mode = "danger-full-access"\napproval_policy = "never"\n')
+        self.write(".codex/narrow.config.toml", 'sandbox_mode = "workspace-write"\n[sandbox_workspace_write]\nwritable_roots = ["%s/work"]\n' % self.root)
+        self.write(".codex/wide.config.toml", '[sandbox_workspace_write]\nwritable_roots = ["%s"]\n' % self.root)
+        res = {os.path.basename(x["file"]): x["kinds"] for x in cx.codex_sandbox(self.root)}
+        self.assertEqual(res["config.toml"], ["dangerFull"])
+        self.assertIn("dangerFull", res["fast.config.toml"])
+        self.assertIn("neverAsk", res["fast.config.toml"])
+        self.assertNotIn("narrow.config.toml", res)
+        self.assertEqual(res["wide.config.toml"], ["wideRoots"])
+
+    def test_auth_header_flag(self):
+        self.write(".claude.json", json.dumps({"mcpServers": {
+            "authed": {"type": "http", "url": "https://mcp.example.com/mcp", "headers": {"Authorization": "Bearer sekrit-value-1"}},
+            "open": {"type": "http", "url": "https://open.example.com/mcp"},
+            "local": {"type": "http", "url": "http://127.0.0.1:3000/mcp"}}}))
+        m = {x["name"]: x for x in cx.mcp_inventory(self.root)}
+        self.assertIs(m["authed"]["authHeader"], True)
+        self.assertIs(m["open"]["authHeader"], False)
+        self.assertIsNone(m["local"]["authHeader"])
+        self.assertNotIn("sekrit-value-1", json.dumps(list(m.values())))
+
+    def test_report_levels(self):
+        f = threat_facts(bad=False)
+        f["aiKeys"]["sandbox"] = [{"file": "~/.codex/a.config.toml", "kinds": ["dangerFull", "neverAsk"]},
+                                  {"file": "~/.codex/config.toml", "kinds": ["dangerFull"]}]
+        f["aiKeys"]["mcp"].append({"app": "Cursor", "source": "~/.cursor/mcp.json", "name": "noauth", "transport": "remote",
+                                   "unpinned": False, "insecureUrl": False, "secretValues": 0, "authHeader": False})
+        d = easy_report.build_data(f)
+        lv = sorted(x["level"] for x in d["todo"] if x["cat"] == "aikeys")
+        self.assertEqual(lv, ["red", "yellow"])                       # the open remote MCP is not counted
+        nxt = easy_report.next_steps(f) if hasattr(easy_report, "next_steps") else []
+        self.assertTrue(any(x.get("cat") == "mcpauth" for x in nxt))
+
+
 class ExtensionsTest(Tmp):
     def test_store_and_bad_ids(self):
         def ext(eid, man):

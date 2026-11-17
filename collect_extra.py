@@ -487,7 +487,7 @@ def shell_persistence(home=None):
 
 # --- リポジトリを開くだけで動く仕掛け ---------------------------------------------
 
-RULE_FILES = {"CLAUDE.md", "AGENTS.md", "GEMINI.md", ".cursorrules", ".windsurfrules", "copilot-instructions.md", "SKILL.md"}
+RULE_FILES = {"CLAUDE.md", "AGENTS.md", "GEMINI.md", "CLAUDE.local.md", ".cursorrules", ".windsurfrules", "copilot-instructions.md", "SKILL.md"}
 TAG_CHARS = re.compile("[\U000E0000-\U000E007F]")
 BIDI = re.compile("[\u202a-\u202e\u2066-\u2069]")
 ZERO_WIDTH = re.compile("[\u200b\u200c\u2060-\u2064\u180e]|(?<!^)\ufeff")
@@ -534,6 +534,9 @@ def open_to_run(roots, skip_dirs, depth, ioc=None):
     rule_paths += glob.glob(os.path.join(HOME, ".claude", "skills", "*", "SKILL.md"))
     rule_paths += glob.glob(os.path.join(HOME, ".claude", "agents", "*.md"))
     rule_paths += glob.glob(os.path.join(HOME, ".claude", "commands", "*.md"))
+    # AI のメモリ（会話をまたいで読み込まれる）と、Codex / Gemini の全体用の指示ファイル
+    rule_paths += glob.glob(os.path.join(HOME, ".claude", "projects", "*", "memory", "*.md"))
+    rule_paths += [os.path.join(HOME, ".codex", "AGENTS.md"), os.path.join(HOME, ".gemini", "GEMINI.md")]
     for root in roots:
         root = os.path.expanduser(root)
         for dp, dns, fns in os.walk(root):
@@ -706,7 +709,9 @@ def codex_servers(text):
             continue
         k, _, v = s.partition("=")
         k, v = k.strip(), v.strip()
-        if sub:
+        if sub == "http_headers":
+            servers[cur].setdefault("headers", {})[k.strip('"')] = v.strip('"')
+        elif sub:
             servers[cur].setdefault("env", {})[k] = v.strip('"')
         elif k in ("command", "url"):
             servers[cur][k] = v.strip('"')
@@ -714,7 +719,82 @@ def codex_servers(text):
             servers[cur]["args"] = re.findall(r"\"([^\"]*)\"", v)
         elif k == "env":
             servers[cur]["env"].update(dict(re.findall(r"([A-Za-z0-9_]+)\s*=\s*\"([^\"]*)\"", v)))
+        elif k == "http_headers":
+            servers[cur].setdefault("headers", {}).update(dict(re.findall(r"\"?([A-Za-z0-9_-]+)\"?\s*=\s*\"([^\"]*)\"", v)))
     return servers
+
+
+AUTH_HEADER = re.compile(r"^(authorization|proxy-authorization|x-api-key|api-key|apikey|.*[-_]token|.*[-_]key|.*[-_]secret)$", re.I)
+
+
+def has_auth_header(conf):
+    """headers / http_headers に認証らしい名前があるか。値は見ない。"""
+    for k in ("headers", "http_headers"):
+        h = conf.get(k)
+        if isinstance(h, dict) and any(AUTH_HEADER.match(str(n)) for n in h):
+            return True
+    return False
+
+
+def is_local_url(url):
+    m = re.match(r"^[a-z]+://\[?([^/:\]]+)", str(url or ""), re.I)
+    return bool(m) and m.group(1) in ("localhost", "127.0.0.1", "::1")
+
+
+def toml_top_and_tables(text):
+    """TOML を {表名: {鍵: 値}} に分ける（最上位は ""）。値は文字列のまま。Codex の設定の必要な行だけ読む簡易解析。"""
+    tables, cur = {"": {}}, ""
+    for line in text.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        m = re.match(r"^\[([^\[\]]+)\]$", s)
+        if m:
+            cur = m.group(1).strip()
+            tables.setdefault(cur, {})
+            continue
+        if s.startswith("[") or "=" not in s:
+            continue
+        k, _, v = s.partition("=")
+        tables[cur][k.strip()] = v.strip()
+    return tables
+
+
+WIDE_ROOTS = {"/", "/Users", "~", "$HOME", "${HOME}"}
+
+
+def codex_sandbox(home=None):
+    """Codex の設定で、サンドボックスをわざと外している箇所。値の中身は残さず、ファイル名と種類だけ返す。
+    kinds: dangerFull（danger-full-access）、neverAsk（approval_policy = never）、wideRoots（書き込み先がホーム全体など）。"""
+    home = home or HOME
+    cdir = os.path.join(home, ".codex")
+    files = [os.path.join(cdir, "config.toml")] + sorted(glob.glob(os.path.join(cdir, "*.config.toml")))
+    res = []
+    for fp in files:
+        text = read_text(fp)
+        if not text:
+            continue
+        tabs = toml_top_and_tables(text)
+        # 最上位と、旧形式の [profiles.名前] を、それぞれ別の設定として見る
+        scopes = [("", tabs.get("", {}), tabs.get("sandbox_workspace_write", {}))]
+        for t, vals in tabs.items():
+            if t.startswith("profiles.") and t.count(".") == 1:
+                scopes.append((t, vals, tabs.get(t + ".sandbox_workspace_write", {})))
+        kinds = []
+        for _name, vals, sww in scopes:
+            danger = vals.get("sandbox_mode", "").strip("\"'") == "danger-full-access"
+            never = vals.get("approval_policy", "").strip("\"'") == "never"
+            if danger:
+                kinds.append("dangerFull")
+                if never:
+                    kinds.append("neverAsk")
+            roots = re.findall(r"\"([^\"]*)\"", sww.get("writable_roots", ""))
+            home_n = home.rstrip("/")
+            if any(r.rstrip("/") in WIDE_ROOTS or r.rstrip("/") == home_n or r == "/" for r in roots):
+                kinds.append("wideRoots")
+        if kinds:
+            res.append({"file": short(fp), "kinds": sorted(set(kinds))})
+    return res
 
 
 def mcp_sources(home=None):
@@ -758,6 +838,7 @@ def mcp_inventory(home=None):
                             "transport": "remote" if url else "local",
                             "unpinned": unpinned(conf.get("command"), conf.get("args")),
                             "insecureUrl": url_flags(url),
+                            "authHeader": has_auth_header(conf) if url and not is_local_url(url) else None,
                             "secretValues": secret_values(conf.get("env")) + secret_values(conf.get("headers"))})
     return res
 
@@ -847,7 +928,7 @@ def ai_cli_versions(ioc=None, found=None):
 
 
 def ai_keys():
-    return {"credFiles": cred_files(), "mcp": mcp_inventory(), "cli": ai_cli_versions()}
+    return {"credFiles": cred_files(), "mcp": mcp_inventory(), "cli": ai_cli_versions(), "sandbox": codex_sandbox()}
 
 
 # --- AI のペンテスト（Strix）--------------------------------------------------

@@ -7,7 +7,7 @@ description: Check this Mac's security with BB Preflight (free, read-only, nothi
 
 BB Preflight は、Mac の実際の状態を**読むだけ**で点検する無料のツールです（Apache-2.0、https://github.com/infosat2000/preflight）。
 見るのは、待ち受けているポート、ファイアウォール、ファイルに書かれた API キー、AI エージェントに与えた権限、自動で起動するもの、偽装アプリ、ブラウザの拡張機能、Strix の結果などです。
-点検そのものは何も変えず、sudo も使わず、結果をどこにも送りません（外への通信は、台帳に書いた自分の公開 URL への確認だけ）。
+点検そのものは何も変えず、sudo も使わず、結果をどこにも送りません（外への通信は、台帳に書いた自分の公開 URL への確認だけ。`/.env` などの確認は台帳で指定したものだけ）。
 
 ## 守ること
 
