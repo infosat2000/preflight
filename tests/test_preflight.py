@@ -810,6 +810,24 @@ class ProbeUrlsTest(unittest.TestCase):
         rs = self.probe([{"id": "a", "url": "https://a.example.com/", "exposureCheck": True}])
         self.assertEqual(rs[0]["exposure"], {"env": False, "git": False})
 
+    def test_exposure_note_names_checked_hosts_only(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("200", "", self.ALL)
+        self.responses["https://b.example.com/"] = ("200", "", self.ALL)
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/", "exposureCheck": True},
+                                              {"id": "b", "url": "https://b.example.com/"}])
+        d = easy_report.build_data(f)
+        notes = [x for x in d["ok"] if "/.env" in x["text"]["ja"]]
+        self.assertEqual(len(notes), 1)
+        self.assertIn("https://a.example.com", notes[0]["text"]["ja"])
+        self.assertNotIn("https://b.example.com", notes[0]["text"]["ja"])
+        self.assertIn("only for servers you manage yourself", notes[0]["text"]["en"])
+        self.assertNotRegex(notes[0]["text"]["en"], r"[　-鿿＀-￯]")
+        # 何も付けていなければ、この文は出ない
+        f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        d = easy_report.build_data(f)
+        self.assertFalse([x for x in d["ok"] if "/.env" in x["text"]["ja"]])
+
     def test_exposure_checked_once_per_host(self):
         self.probe([{"id": "a", "url": "https://a.example.com/x", "exposureCheck": True},
                     {"id": "b", "url": "https://a.example.com/y", "exposureCheck": True}])
