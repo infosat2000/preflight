@@ -106,6 +106,37 @@ const T = {
 
 // 新しい版のお知らせ。notBefore より後に R2 の zip が置き換わるまでは送らない（古い zip を配らないように）
 export const NEWS = {
+  "1.4.1": {
+    notBefore: "2026-11-17T07:55:48Z", // 1.4.1 を main に入れた時刻
+    ja: {
+      subject: "BB Preflight 1.4.1 を出しました（公開サイトと AI エージェントの設定を深く点検）",
+      body: (v) => [
+        "BB Preflight を 1.4.1 にしました（1.4.0 の内容を含みます）。点検は21項目のまま、見る深さを増やしました。",
+        "公開しているサイトでは、これまでの「開いているか」に加えて、次を確かめます。\n・応答ヘッダー（HTTPS の強制、MIME の誤認、他サイトの枠への埋め込み）の有無\n・http でつないだときに https へ転送されるか\n・台帳で指定したサイトだけ、/.env と /.git/config が誰でも読める状態になっていないか（読んだ中身は記録せず、見えたかどうかだけを残します）",
+        "AI エージェントの設定では、次を足しました。\n・AI のメモリや指示のファイルに、見えない文字（指示を隠せる文字）が混ざっていないか\n・Codex の、確認なしで全権限を与える設定（danger-full-access と approval_policy = never の組み合わせ）\n・認証の手がかりが設定にない遠隔 MCP（レポートの「次の一歩」に名前だけ並べます）",
+        "BB Preflight は、これまでどおり読むだけで、何も変えず、結果をどこかに送ることもありません。外への通信は、台帳に書いた自分の公開URLへの確認だけです。",
+        "1.4.1 は、ここから受け取れます。あなた専用のリンクで、7日間、5回まで使えます。",
+        v.downloadUrl,
+        "入れ替え方:\n1. 受け取った zip を開くと、BB-Preflight フォルダができます。\n2. 前の版の BB-Preflight フォルダをゴミ箱に入れ、新しいフォルダを同じ場所に置きます。名前が「BB-Preflight 2」になっていたら、「BB-Preflight」に直してください。\n3. いつもどおり BB Preflight を開きます。台帳と前回の結果はそのまま残るので、書き直す必要はありません。",
+        `リンクの期限が切れたら、リンクを開くと新しいリンクを受け取れます。紹介ページで同じメールアドレスを入れ直しても届きます: ${v.siteBase}/ja/preflight/`,
+        ...(v.sourceUrl ? [`変更の記録（CHANGELOG）: ${v.sourceUrl}/blob/main/CHANGELOG.md`] : []),
+      ],
+    },
+    en: {
+      subject: "BB Preflight 1.4.1 is out (a deeper look at public sites and AI agent settings)",
+      body: (v) => [
+        "BB Preflight 1.4.1 is out (it includes everything from 1.4.0). It still has 21 checks, but looks deeper at several of them.",
+        "For public sites, on top of \"is it reachable\", it now checks:\n- Whether response headers are present (forcing HTTPS, stopping MIME sniffing, blocking embedding in other sites' frames)\n- Whether http redirects to https\n- Only for sites you mark in your list: whether /.env and /.git/config can be read by anyone (it records only whether they were visible, never their contents)",
+        "For AI agent settings, it adds:\n- Hidden characters (which can conceal instructions) in AI memory and instruction files\n- Codex running with full access and no approvals (danger-full-access combined with approval_policy = never)\n- Remote MCP servers with no sign of authentication in their config (listed by name under \"Next steps\")",
+        "As before, BB Preflight only reads. It changes nothing and sends your results nowhere. Its only outbound requests are checks on your own public URLs from your list.",
+        "Get 1.4.1 here. The link is just for you and works 5 times within 7 days.",
+        v.downloadUrl,
+        "To swap in the new version:\n1. Open the zip. You'll get a BB-Preflight folder.\n2. Move your old BB-Preflight folder to the Trash and put the new one in the same place. If it's called \"BB-Preflight 2\", rename it to \"BB-Preflight\".\n3. Open BB Preflight as usual. Your list and your last results stay where they are, so there's nothing to redo.",
+        `If the link expires, open it and you can ask for a new one. You can also enter the same email on the BB Preflight page again: ${v.siteBase}/en/preflight/`,
+        ...(v.sourceUrl ? [`What changed (CHANGELOG): ${v.sourceUrl}/blob/main/CHANGELOG.md`] : []),
+      ],
+    },
+  },
   "1.3.0": {
     notBefore: "2026-11-06T04:34:18Z", // 1.3.0 を main に入れた時刻
     ja: {

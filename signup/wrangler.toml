@@ -39,7 +39,7 @@ DOWNLOAD_KEY = "latest/Preflight.zip"   # R2 の中で、いま配る zip。uplo
 DOWNLOAD_NAME = "BB-Preflight.zip"       # 受け取った人の手元での名前
 TEST_ADDRESS = ""                       # 試し運転のときだけ、このアドレス宛てのリンクをログに伏せずに出す。本番の前に空に戻す
 SOURCE_URL = ""                         # リポジトリを公開する日に https://github.com/infosat2000/preflight を入れる
-NEWS = ""                               # 新しい版のお知らせを送るときだけ、その版（例 1.2.0。src/emails.js の NEWS）を入れる
+NEWS = "1.4.1"                             # 新しい版のお知らせを送るときだけ、その版（例 1.2.0。src/emails.js の NEWS）を入れる
 NEWS_PER_RUN = "3"                      # お知らせを1回（毎時）に何通送るか。Resend の無料枠（1日100通）に収める
 
 # 秘密の値（wrangler secret put <名前> で入れる）:
