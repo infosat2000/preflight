@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-17
+
+公開サイトの確認と、AI エージェント設定の点検を深めた版。どれも読み取り専用で、sudo は使わず、点検の結果は Mac から出さない（外への通信は、台帳に書いた自分の公開 URL への確認だけ）。
+
 ### 追加
 - Claude Code などのAIエージェント向けスキル `skills/bb-preflight/SKILL.md`。「この Mac を点検して」で点検を回し、結果を説明し、1件ずつ OK をもらって直す。`npx skills add infosat2000/preflight` で入る。
 - 受け口の申し込みの流れを週ごとに数える `signup/funnel.sh`（読むだけ。件数だけを出す）。
