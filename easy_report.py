@@ -162,6 +162,9 @@ def key_kinds(hits):
 
 
 def why_loose(hits):
+    if any(h.get("gitTracked") is True for h in hits):
+        return t("Git に記録されています。GitHub などに上げていなくても、履歴に残ります",
+                 "It is recorded in Git, so it stays in the history even if you never pushed it to GitHub")
     if any(h.get("gitIgnored") is False for h in hits):
         return t("Git で管理しているフォルダにあり、GitHub などに上がるおそれがあります",
                  "It is in a folder tracked by Git, so it could end up on GitHub or similar sites")
@@ -416,7 +419,7 @@ def analyze(facts):
     secrets = facts.get("secrets", [])
     # .env 系で、本人しか読めず、Git に載らない置き方なら、開発ではふつう（確認だけ）。それ以外は赤
     tidy = [h for h in secrets if os.path.basename(h["file"]).startswith(".env")
-            and h.get("private") and h.get("gitIgnored") is not False]
+            and h.get("private") and h.get("gitIgnored") is not False and h.get("gitTracked") is not True]
     loose = [h for h in secrets if h not in tidy]
     if loose:
         kinds, files, why = join(key_kinds(loose)), join([same(h["file"]) for h in loose]), why_loose(loose)

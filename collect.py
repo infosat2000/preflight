@@ -216,7 +216,14 @@ def storage(fp):
         git_ignored = True if r.returncode == 0 else False if r.returncode == 1 else None
     except Exception:  # noqa: BLE001
         git_ignored = None
-    return {"private": private, "gitIgnored": git_ignored}
+    try:
+        # 0: Git が追跡中（履歴にも残る）/ 1: 追跡していない / それ以外: Git の管理外
+        r = subprocess.run(["git", "-C", os.path.dirname(fp), "ls-files", "--error-unmatch", "--", fp],
+                           capture_output=True, timeout=10)
+        git_tracked = True if r.returncode == 0 else False if r.returncode == 1 else None
+    except Exception:  # noqa: BLE001
+        git_tracked = None
+    return {"private": private, "gitIgnored": git_ignored, "gitTracked": git_tracked}
 
 
 GUARD_STATE = os.path.join(HOME, ".claude", "supply-chain", "state.json")

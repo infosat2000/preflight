@@ -113,7 +113,7 @@ class SecretScanTest(unittest.TestCase):
         p = self.write("app/.env", "ANTHROPIC_API_KEY=%s\n" % key)
         hits = collect.secret_scan([self.root])
         self.assertEqual([{k: h[k] for k in ("file", "kinds")} for h in hits], [{"file": p, "kinds": ["anthropic"]}])
-        self.assertEqual(set(hits[0]), {"file", "kinds", "private", "gitIgnored"})  # never the value
+        self.assertEqual(set(hits[0]), {"file", "kinds", "private", "gitIgnored", "gitTracked"})  # never the value
         self.assertNotIn(key, json.dumps(hits))
 
     def test_home_is_shortened_and_depth_is_limited(self):
@@ -168,6 +168,20 @@ class SecretScanTest(unittest.TestCase):
                 del os.environ["BB_PREFLIGHT_HOME"]
             else:
                 os.environ["BB_PREFLIGHT_HOME"] = old
+
+    def test_git_tracked_env_is_flagged(self):
+        key = "sk-" + "ant-" + "a1B2c3D4e5F6g7H8i9J0kLmNoPq"
+        git = lambda *a: subprocess.run(["git", "-C", self.root] + list(a), capture_output=True, check=True)
+        git("init", "-q")
+        self.write(".env", "K=%s\n" % key)
+        self.write("other/.env", "K=%s\n" % key)
+        git("add", "-f", ".env")
+        os.chmod(os.path.join(self.root, ".env"), 0o600)
+        hits = {os.path.relpath(h["file"], self.root): h for h in collect.secret_scan([self.root])}
+        self.assertIs(hits[".env"]["gitTracked"], True)
+        self.assertIs(hits[os.path.join("other", ".env")]["gitTracked"], False)
+        import easy_report
+        self.assertIn("Git", easy_report.why_loose([hits[".env"]])["ja"] if isinstance(easy_report.why_loose([hits[".env"]]), dict) else str(easy_report.why_loose([hits[".env"]])))
 
     def test_npm_token(self):
         tok = "npm" + "_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
@@ -456,8 +470,8 @@ class EasyReportTest(unittest.TestCase):
                     fp.write("x")
             os.chmod(os.path.join(d, ".env"), 0o600)
             os.chmod(os.path.join(d, "config.py"), 0o644)
-            self.assertEqual(collect.storage(os.path.join(d, ".env")), {"private": True, "gitIgnored": True})
-            self.assertEqual(collect.storage(os.path.join(d, "config.py")), {"private": False, "gitIgnored": False})
+            self.assertEqual(collect.storage(os.path.join(d, ".env")), {"private": True, "gitIgnored": True, "gitTracked": False})
+            self.assertEqual(collect.storage(os.path.join(d, "config.py")), {"private": False, "gitIgnored": False, "gitTracked": False})
         finally:
             shutil.rmtree(d)
 
