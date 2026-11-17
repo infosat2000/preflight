@@ -371,7 +371,44 @@ def analyze(facts):
     site_issue = False
     for u in facts.get("urls", []):
         uid, url, v = u.get("id", ""), u.get("url", ""), u.get("verdict")
-        if "admin" in uid and v == "open":
+        hv = u.get("httpVerdict")
+        for kind, path in (("env", "/.env"), ("git", "/.git/config")):
+            if (u.get("exposure") or {}).get(kind):
+                site_issue = True
+                root = re.match(r"https?://[^/]+", url)
+                full = (root.group(0) if root else url) + path
+                todo.append(finding(
+                    "sites", RED, t("%s が、誰にでも読めます" % path, "%s can be read by anyone" % path),
+                    t("%s にアクセスすると、設定や鍵が書かれたファイルの中身が返ってきました（中身はこの報告には記録していません）。" % full,
+                      "Visiting %s returned the contents of a settings or key file (the contents are not recorded in this report)." % full),
+                    t("ファイルに鍵やパスワードが入っていれば、誰でも盗めます。見つけられるのは時間の問題です。",
+                      "If the file holds keys or passwords, anyone can take them. It is only a matter of time before someone finds it."),
+                    t("そのファイルをサーバーの公開場所から外し、中に書かれていた鍵はすべて発行し直します。",
+                      "Remove the file from the server's public folder, and reissue every key that was written in it."),
+                    time=t("30分〜", "30 min or more"),
+                    ask_ai=t("%s が外から読めてしまいます。どこで動いているサイトか調べ、このファイルを公開場所から外す手順と、"
+                             "漏れた可能性のある鍵を発行し直す手順を教えてください。鍵の値は画面に出さず、ファイルにも書かないでください。" % full,
+                             "%s can be read from outside. Find out where the site is hosted and tell me how to take this file out of the "
+                             "public folder, and how to reissue any keys that may have leaked. Never show key values or write them to files." % full)))
+        if "admin" not in uid and not uid.startswith("old-") and v in ("open", "auth_required") and hv == "open":
+            site_issue = True
+            hurl = "http://" + url[len("https://"):] if url.startswith("https://") else url
+            todo.append(finding(
+                "sites", YELLOW, t("暗号化されない入口が開いています", "An unencrypted entrance is open"),
+                t("%s に http（暗号化なし）でつなぐと、https へ転送されず、そのまま応答が返りました。" % hurl,
+                  "Connecting to %s over http (no encryption) was not redirected to https, and it answered as is." % hurl),
+                t("http でつないだ人は、通信の中身を途中で読まれたり書き換えられたりするおそれがあります。",
+                  "Someone who connects over http could have their traffic read or changed along the way."),
+                t("サーバーやホスティングの設定で、http でのアクセスを https へ転送します。",
+                  "In your server or hosting settings, redirect http requests to https."),
+                time=t("15分〜", "15 min or more"),
+                ask_ai=t("%s に http でつなぐと、https へ転送されずに応答します。どこで動いているサイトか調べ、"
+                         "http を https へ転送する設定の手順を、私の環境に合わせて教えてください。" % hurl,
+                         "Connecting to %s over http answers without redirecting to https. Find out where the site is hosted and tell me "
+                         "the steps, for my setup, to redirect http to https." % hurl)))
+        if "admin" in uid and (v == "open" or (v == "auth_required" and hv == "open")):
+            if v != "open":
+                url = "http://" + url[len("https://"):] if url.startswith("https://") else url
             site_issue = True
             todo.append(finding(
                 "sites", RED, t("管理画面が、ログインなしで開きます", "Your admin page opens without a login"),
@@ -1657,6 +1694,30 @@ def next_steps(facts):
                        "into SQL, a page or a command without checks. First list the risky places for each kind, with file names and line numbers, "
                        "and say in plain words whether each could really happen. Don't edit any code until I've approved your proposed fix. "
                        "Don't point this at a live site or live data, and never show keys on screen or write them to files."),
+        })
+    HDR = (("hsts", "Strict-Transport-Security"), ("nosniff", "X-Content-Type-Options"), ("frameProtect", "X-Frame-Options / frame-ancestors"))
+    gaps = [(u["url"], [n for k, n in HDR if k in u["headers"] and not u["headers"][k]])
+            for u in facts.get("urls", []) if u.get("headers")]
+    gaps = [(url, miss) for url, miss in gaps if miss]
+    if gaps:
+        lines = join([same("%s（%s）" % (url, ", ".join(miss))) for url, miss in gaps])
+        who = "; ".join("%s (%s)" % (url, ", ".join(miss)) for url, miss in gaps)
+        res.append({
+            "cat": "headers", "level": "next", "effort": HELP,
+            "title": t("公開サイトの応答に、安全のための見出し（ヘッダー）が足りません", "Your public sites are missing some safety headers"),
+            "what": cat_text(t("次のサイトで、応答に付いていないヘッダーがありました: ", "These sites are missing some response headers: "), lines),
+            "why": t("ヘッダーは、ブラウザに「安全な使い方」を伝える合図です。無くてもすぐ破られるわけではありませんが、付けておくと、"
+                     "暗号化の強制や、別サイトの中に埋め込まれての悪用を防ぎやすくなります。",
+                     "Headers tell the browser how to use your site safely. A site without them isn't broken into right away, but with them "
+                     "encryption is enforced and it is harder to abuse your site by embedding it inside another."),
+            "how": t("サーバーやホスティングの設定で、足りないヘッダーを追加します。急ぎではありません。",
+                     "Add the missing headers in your server or hosting settings. This is not urgent."),
+            "time": t("約20分", "About 20 min"),
+            "keep": t("急ぎでなければ、このままでも大丈夫です", "If it isn't urgent, you can leave it as it is"),
+            "askAi": t("BB Preflight が、次の公開サイトで足りない応答ヘッダーを見つけました: %s。どこで動いているサイトか調べ、"
+                       "足りないヘッダーを追加する設定の手順を、私の環境に合わせて教えてください。設定を書き換える前に、案を見せてください。" % who,
+                       "BB Preflight found response headers missing on these public sites: %s. Find out where each site is hosted and tell me "
+                       "the steps, for my setup, to add the missing headers. Show me your proposal before changing any settings." % who),
         })
     nm = [m for m in ((facts.get("aiKeys") or {}).get("mcp") or []) if m.get("authHeader") is False]
     if nm:

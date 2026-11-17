@@ -129,23 +129,105 @@ def firewall():
     return {"enabled": "enabled" in g.lower(), "stealth": "stealth mode is on" in s.lower(), "raw": g.strip()}
 
 
+def _classify(code, loc):
+    if code == "ERR" or code == "000":
+        return "unreachable"
+    if code in ("401", "403") or "cloudflareaccess.com" in loc or "/cdn-cgi/access" in loc:
+        return "auth_required"
+    if code.startswith("2"):
+        return "open"
+    return "other"
+
+
+def _parse_headers(text):
+    """curl -D - の出力から、見たいヘッダーが「あるか」だけを返す（値は残さない）。"""
+    names, csp = set(), ""
+    for line in text.splitlines():
+        if ":" not in line:
+            continue
+        k, v = line.split(":", 1)
+        k = k.strip().lower()
+        names.add(k)
+        if k == "content-security-policy":
+            csp += v.lower()
+    return {"hsts": "strict-transport-security" in names,
+            "nosniff": "x-content-type-options" in names,
+            "frameProtect": "x-frame-options" in names or "frame-ancestors" in csp}
+
+
+def _curl_status(url, want_headers=False):
+    """1回 GET して (コード, 転送先, ヘッダー有無) を返す。転送は追わない。本文は捨てる。"""
+    mark = "__BBP__"
+    cmd = ["curl", "-s", "-o", "/dev/null", "-m", "10", "-w", mark + "%{http_code} %{redirect_url}"]
+    if want_headers:
+        cmd[1:1] = ["-D", "-"]
+    out = run(cmd + [url], timeout=15)
+    head, _, tail = out.rpartition(mark)
+    parts = tail.strip().split(" ", 1)
+    code = parts[0] if parts and parts[0].isdigit() else "ERR"
+    loc = parts[1] if len(parts) > 1 else ""
+    return code, loc, (_parse_headers(head) if want_headers else None)
+
+
+def fetch_head(url):
+    """先頭 4KB だけ読む。(ステータス, Content-Type, 本文の先頭) を返し、呼び出し側が判定後に捨てる。"""
+    try:
+        p = subprocess.Popen(["curl", "-s", "-i", "-m", "10", "-r", "0-4095", url],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        data = p.stdout.read(8192)
+        p.kill()
+        p.wait()
+    except Exception:  # noqa: BLE001
+        return "ERR", "", ""
+    text = data.decode("utf-8", "ignore")
+    m = re.match(r"HTTP/\S+\s+(\d{3})", text)
+    if not m:
+        return "ERR", "", ""
+    head, _, body = text.partition("\r\n\r\n")
+    ctype = ""
+    for line in head.splitlines():
+        if line.lower().startswith("content-type:"):
+            ctype = line.split(":", 1)[1].strip().lower()
+    return m.group(1), ctype, body[:4096]
+
+
+def check_exposure(root):
+    """サイトの根の /.env と /.git/config が読めてしまうかだけを判定する。本文は記録しない。"""
+    env = git = False
+    code, ctype, body = fetch_head(root + "/.env")
+    if code.startswith("2") and "text/html" not in ctype:
+        env = len([ln for ln in body.splitlines() if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=.+", ln)]) >= 2
+    code, ctype, body = fetch_head(root + "/.git/config")
+    if code.startswith("2"):
+        git = "[core]" in body or "repositoryformatversion" in body
+    return {"env": env, "git": git}
+
+
 def probe_urls(endpoints):
-    """公開URLへ未認証でアクセスし、ステータスと転送先だけ記録する（転送は追わない）。"""
+    """公開URLへ未認証でアクセスし、ステータス・転送先・ヘッダーの有無だけ記録する（転送は追わない）。
+    https のURLは http での応答も1回見る。台帳で exposureCheck: true のURLだけ、サイトごとに1回 /.env と /.git/config を確かめる。"""
     res = []
+    seen_hosts = set()
     for ep in endpoints:
-        out = run(["curl", "-s", "-o", "/dev/null", "-m", "10", "-w", "%{http_code} %{redirect_url}", ep["url"]], timeout=15)
-        parts = out.strip().split(" ", 1)
-        code = parts[0] if parts and parts[0].isdigit() else "ERR"
-        loc = parts[1] if len(parts) > 1 else ""
-        if code == "ERR" or code == "000":
-            verdict = "unreachable"
-        elif code in ("401", "403") or "cloudflareaccess.com" in loc or "/cdn-cgi/access" in loc:
-            verdict = "auth_required"
-        elif code.startswith("2"):
-            verdict = "open"
-        else:
-            verdict = "other"
-        res.append({"id": ep["id"], "url": ep["url"], "code": code, "redirect": loc, "verdict": verdict})
+        url = ep["url"]
+        old = ep["id"].startswith("old-")
+        code, loc, hdr = _curl_status(url, want_headers=True)
+        verdict = _classify(code, loc)
+        item = {"id": ep["id"], "url": url, "code": code, "redirect": loc, "verdict": verdict}
+        if verdict == "open" and not old:
+            item["headers"] = {k: v for k, v in hdr.items() if k != "hsts" or url.startswith("https://")}
+        if url.startswith("https://") and not old:
+            c2, l2, _ = _curl_status("http://" + url[len("https://"):])
+            item["httpVerdict"] = _classify(c2, l2)
+            item["httpCode"] = c2
+            if c2 in ("301", "302", "307", "308") and not l2.startswith("https://"):
+                item["httpVerdict"] = "other"
+        if ep.get("exposureCheck") is True:
+            m = re.match(r"(https?://[^/]+)", url)
+            if m and m.group(1) not in seen_hosts:
+                seen_hosts.add(m.group(1))
+                item["exposure"] = check_exposure(m.group(1))
+        res.append(item)
     return res
 
 

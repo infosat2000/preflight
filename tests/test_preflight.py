@@ -667,6 +667,139 @@ class EasyReportTest(unittest.TestCase):
             shutil.rmtree(out)
 
 
+class ProbeUrlsTest(unittest.TestCase):
+    """A1: 公開URLの追加確認。ネットワークには出ず、curl と本文取得を差し替えて確かめる。"""
+
+    def setUp(self):
+        self.calls = []
+        self.fetches = []
+        self.responses = {}   # URL -> (code, redirect, header text)
+        self.bodies = {}      # URL -> (code, ctype, body)
+        self._run, self._fetch = collect.run, collect.fetch_head
+
+        def fake_run(cmd, timeout=20):
+            url = cmd[-1]
+            self.calls.append(url)
+            code, loc, hdr = self.responses.get(url, ("000", "", ""))
+            return hdr + "\n__BBP__%s %s" % (code, loc)
+
+        def fake_fetch(url):
+            self.fetches.append(url)
+            return self.bodies.get(url, ("404", "", ""))
+        collect.run, collect.fetch_head = fake_run, fake_fetch
+
+    def tearDown(self):
+        collect.run, collect.fetch_head = self._run, self._fetch
+
+    ALL = "HTTP/2 200\r\nStrict-Transport-Security: max-age=1\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\n"
+
+    def probe(self, eps):
+        return collect.probe_urls(eps)
+
+    def test_headers_recorded_as_presence_only(self):
+        self.responses["https://a.example.com/"] = ("200", "", "HTTP/2 200\r\nX-Content-Type-Options: SECRETVALUE\r\n")
+        self.responses["http://a.example.com/"] = ("301", "https://a.example.com/", "")
+        r = self.probe([{"id": "a", "url": "https://a.example.com/"}])[0]
+        self.assertEqual(r["headers"], {"hsts": False, "nosniff": True, "frameProtect": False})
+        self.assertEqual(r["httpVerdict"], "other")
+        self.assertNotIn("SECRETVALUE", json.dumps(r))
+
+    def test_csp_frame_ancestors_counts(self):
+        self.responses["https://a.example.com/"] = ("200", "", "Content-Security-Policy: default-src 'self'; frame-ancestors 'none'\r\n")
+        r = self.probe([{"id": "a", "url": "https://a.example.com/"}])[0]
+        self.assertTrue(r["headers"]["frameProtect"])
+
+    def test_no_header_judgement_for_redirect_401_or_old(self):
+        self.responses["https://r.example.com/"] = ("301", "https://www.example.com/", self.ALL)
+        self.responses["https://p.example.com/"] = ("401", "", self.ALL)
+        self.responses["https://old.example.com/"] = ("200", "", self.ALL)
+        rs = self.probe([{"id": "r", "url": "https://r.example.com/"}, {"id": "p", "url": "https://p.example.com/"},
+                         {"id": "old-x", "url": "https://old.example.com/"}])
+        self.assertTrue(all("headers" not in x for x in rs))
+        self.assertNotIn("http://old.example.com/", self.calls)  # old- は http も確認しない
+
+    def test_http_not_redirected_is_yellow(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("200", "", self.ALL)
+        self.responses["http://a.example.com/"] = ("200", "", "")
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        d = easy_report.build_data(f)
+        yl = [x for x in d["todo"] if "暗号化されない入口" in x["title"]["ja"]]
+        self.assertEqual(len(yl), 1)
+        self.assertEqual(yl[0]["level"], "yellow")
+
+    def test_http_unreachable_or_redirect_gives_nothing(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("200", "", self.ALL)
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        self.assertEqual(f["urls"][0]["httpVerdict"], "unreachable")
+        d = easy_report.build_data(f)
+        self.assertFalse([x for x in d["todo"] if "暗号化されない入口" in x["title"]["ja"]])
+
+    def test_admin_http_open_is_red_admin_finding(self):
+        import easy_report
+        self.responses["https://a.example.com/admin/"] = ("401", "", "")
+        self.responses["http://a.example.com/admin/"] = ("200", "", "")
+        f = facts(); f["urls"] = self.probe([{"id": "a-admin", "url": "https://a.example.com/admin/"}])
+        d = easy_report.build_data(f)
+        titles = [x["title"]["ja"] for x in d["todo"]]
+        self.assertIn("管理画面が、ログインなしで開きます", titles)
+        self.assertNotIn("暗号化されない入口が開いています", titles)
+
+    def test_exposure_is_opt_in(self):
+        self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        self.assertEqual(self.fetches, [])
+
+    def test_exposure_env_and_git_and_html(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("200", "", self.ALL)
+        self.bodies["https://a.example.com/.env"] = ("200", "text/plain", "API_KEY=ZZTOPSECRET\nDB_PASS=hunter2\n")
+        self.bodies["https://a.example.com/.git/config"] = ("200", "text/plain", "[core]\n\trepositoryformatversion = 0\n")
+        rs = self.probe([{"id": "a", "url": "https://a.example.com/", "exposureCheck": True}])
+        self.assertEqual(rs[0]["exposure"], {"env": True, "git": True})
+        blob = json.dumps(rs)
+        self.assertNotIn("ZZTOPSECRET", blob)
+        self.assertNotIn("hunter2", blob)
+        f = facts(); f["urls"] = rs
+        d = easy_report.build_data(f)
+        reds = [x["title"]["ja"] for x in d["todo"] if x["level"] == "red"]
+        self.assertIn("/.env が、誰にでも読めます", reds)
+        self.assertIn("/.git/config が、誰にでも読めます", reds)
+        self.assertNotIn("ZZTOPSECRET", json.dumps(d))
+        # HTML を返すだけのサイト・404 は出さない
+        self.bodies["https://a.example.com/.env"] = ("200", "text/html", "A=1\nB=2\n")
+        self.bodies["https://a.example.com/.git/config"] = ("404", "", "")
+        rs = self.probe([{"id": "a", "url": "https://a.example.com/", "exposureCheck": True}])
+        self.assertEqual(rs[0]["exposure"], {"env": False, "git": False})
+
+    def test_exposure_checked_once_per_host(self):
+        self.probe([{"id": "a", "url": "https://a.example.com/x", "exposureCheck": True},
+                    {"id": "b", "url": "https://a.example.com/y", "exposureCheck": True}])
+        self.assertEqual(len(self.fetches), 2)
+
+    def test_header_gaps_go_to_next_steps_not_counts(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("200", "", "HTTP/2 200\r\n")
+        self.responses["http://a.example.com/"] = ("301", "https://a.example.com/", "")
+        base = facts(); base["urls"] = []
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        d0, d = easy_report.build_data(base), easy_report.build_data(f)
+        nx = [x for x in d["next"] if x["cat"] == "headers"]
+        self.assertEqual(len(nx), 1)
+        self.assertEqual(nx[0]["level"], "next")
+        self.assertIn("Strict-Transport-Security", nx[0]["what"]["en"])
+        self.assertEqual(len(d["todo"]), len(d0["todo"]))
+        for k in ("title", "what", "why", "how", "askAi"):
+            self.assertFalse(re.search(r"[\u3040-\u30ff\u4e00-\u9fff]", nx[0][k]["en"]), k)
+
+    def test_full_headers_add_no_next_step(self):
+        import easy_report
+        self.responses["https://a.example.com/"] = ("200", "", self.ALL)
+        self.responses["http://a.example.com/"] = ("301", "https://a.example.com/", "")
+        f = facts(); f["urls"] = self.probe([{"id": "a", "url": "https://a.example.com/"}])
+        self.assertFalse([x for x in easy_report.build_data(f)["next"] if x["cat"] == "headers"])
+
+
 class VersionTest(unittest.TestCase):
     def test_one_version_everywhere(self):
         import easy_report

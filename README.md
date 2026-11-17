@@ -3,7 +3,7 @@
 > **English** — A free, read-only security check for one Mac, made for people who build and run things with AI agents.
 > It measures what is actually there: listening ports, the firewall, plain-text API keys, what Claude Code and other AI agents are allowed to do (permission rules, MCP servers, scheduled `claude` jobs), things that start on their own, apps posing as Apple or Google, browser extensions, and the results of [Strix](https://github.com/usestrix/strix) AI pentest runs.
 > It writes a plain-language report (NO-GO / CAUTION / CLEAR, with step-by-step fixes and a ready-to-paste request for your AI) and a diff against the last run.
-> No sudo, changes nothing, sends nothing anywhere (the only outbound requests are status checks to your own URLs). Python 3.9 standard library only. Apache-2.0.
+> No sudo, changes nothing, sends nothing anywhere (the only outbound requests are status and header checks to your own URLs, plus `/.env` and `/.git/config` only where you opt in). Python 3.9 standard library only. Apache-2.0.
 >
 > ```bash
 > git clone https://github.com/infosat2000/preflight && cd preflight
@@ -45,7 +45,8 @@ FOREST LIFE* が作り、[Blackbox Blast](https://blackboxblast.com/) で紹介�
 - 何も変更しません（プロセスの停止や設定変更はしない）。sudo も使いません。
 - 秘密情報の値はどのファイルにも書かず、画面にも出しません。鍵を探すときと SSH 鍵のパスフレーズの有無を見るときはファイルを読みますが、記録するのはファイルの場所（`~/…` の形）と種類だけです。SSH 鍵は先頭の暗号方式の名前だけを見ます。
 - 評価エンジンは既定では入れません。`./setup.sh --with-engine` で入れるときは部品を npm で入れますが、`npm ci --ignore-scripts` でパッケージの install スクリプトは動かしません。版とロックファイルも固定しています。
-- 外部への通信は、台帳に書いた自分の公開URLへの確認アクセスだけです。
+- 外部への通信は、台帳に書いた自分の公開URLだけです。各URLに未認証で1回アクセスし、応答の状態と応答ヘッダーの有無を確かめます。https のURLは、http でつないだときに https へ転送されるかも1回確かめます。
+- 台帳で `exposureCheck: true` を付けたURLだけ、同じサイトの `/.env` と `/.git/config` を1回ずつ読みに行き、鍵や設定が誰でも見える状態でないか確かめます。読んだ中身は記録せず、見えたかどうかだけを残します。借りているサービスの共通ドメイン（Shopify・Notion など、自分で管理していないサーバー）には付けないでください。
 
 ## 必要なもの
 
@@ -122,7 +123,7 @@ npx skills add infosat2000/preflight
 | `mac` | このMacの表示名と補足（任意） |
 | `portNames` | ポート番号 → 表示名。root 所有でプロセス名が分からない待ち受けに名前を付ける |
 | `remoteAdminPorts` | 遠隔管理・共有系のポート。LAN 側の IP で開いているか実際に試す |
-| `endpoints` | 未認証でアクセスして応答を確かめる公開URL。**ID が `old-` で始まるものは「解約済みのはず」の入口**として扱い、応答したら赤で出す |
+| `endpoints` | 未認証でアクセスして応答を確かめる公開URL。**ID が `old-` で始まるものは「解約済みのはず」の入口**として扱い、応答したら赤で出す。`"exposureCheck": true` を書いたURLだけ、同じサイトの `/.env` と `/.git/config` が読めないかも確かめる（自分のサーバーにだけ付ける） |
 | `secretScanRoots` | 平文の鍵を探すフォルダ |
 | `publicSites` | 公開サイト。`admin: true` は管理画面で、`endpoint` の応答が 401/403/Cloudflare Access なら認証あり、200 なら認証なしとして描く |
 | `dataStores` | データの置き場所。`pii` を書くと個人情報として描く |
@@ -158,6 +159,7 @@ npx skills add infosat2000/preflight
 - 図に出せるのは「入口があるか」まで。ファイアウォールのアプリ単位の許可で、実際に LAN から届くかは確かめていない（別の機器からの試験はしない）。
 - claude を呼ぶ定期ジョブの判定は、plist の引数と、そこから直接呼ばれるスクリプトの本文まで。別スクリプトを挟む呼び出しは数えていない。
 - 外部サービスのログ保持・MFA の有無は台帳頼み。
+- 公開URLの確認は、応答ヘッダー3種・http からの転送・`/.env` と `/.git/config` の2つだけです。サイト全体の走査はしません。
 - 自分のアプリの穴（他人の予約が見える、など）は調べない。それは Strix のような AI のペンテスト道具の仕事で、BB Preflight はその結果を読むだけ。
 - 「問題なし」「対象なし」は、該当する要素を台帳に書いていないだけの場合がある。
 
